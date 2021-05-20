@@ -9,6 +9,11 @@ from tqdm import tqdm
 from sklearn.datasets import load_boston
 
 
+datasets = [
+    "boston", "concrete", "energy", "kin8nm",
+    "naval", "plant", "wine-red", "wine-white", "yacht"
+]
+
 dataset_urls = {
     "concrete": {
         "Concrete_Data.xls": "http://archive.ics.uci.edu/ml/machine-learning-databases/concrete/compressive/Concrete_Data.xls",
@@ -66,7 +71,7 @@ def _extract_zip(filepath):
     to_path = os.path.dirname(filepath)
     with zipfile.ZipFile(filepath, 'r') as z:
         z.extractall(to_path)
-    # os.remove(filepath)
+    # os.remove(filepath)  # Remove ZIP file after extraction
 
 
 def _download_dataset(name, root):
@@ -84,12 +89,6 @@ def _download_dataset(name, root):
 
             if filename.endswith(".zip"):
                 _extract_zip(filepath)
-
-
-datasets = [
-    "boston", "concrete", "energy", "kin8nm",
-    "naval", "plant", "wine-red", "wine-white", "yacht"
-]
 
 
 def get_dataset(name, root, y_newaxis=True):
