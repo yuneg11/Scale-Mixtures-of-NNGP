@@ -7,6 +7,7 @@ __all__ = [
     "TrainBatch",
     "logsumexp",
     "log_softmax",
+    "robust_max_values",
     "kron_diag",
     "matmul2",
     "matmul3",
@@ -70,6 +71,20 @@ def log_softmax(data):
     return data_log_softmax
 
 
+# TODO
+def robust_max_values(data, label, class_num, eps=0.001):
+    data_idx = jnp.argmax(data, axis=-1)
+    label_idx = jnp.argmax(label, axis=-1)
+
+    out = jnp.sum((data_idx == label_idx) == True) * (1 - eps) \
+        + jnp.sum((data_idx == label_idx) == False) * (eps / (class_num - 1))
+
+    # out = jnp.full_like(data, 1 - eps)
+    # idxs = jnp.argmax(data, axis=-1)[..., jnp.newaxis]
+    # np.put_along_axis(out, idxs, 1 - eps, axis=-1)  # TODO: replace with jax
+    return out
+
+
 def kron_diag(data, n):
     data_expanded = jnp.kron(jnp.eye(n), data)
     return data_expanded
@@ -107,9 +122,9 @@ def get_true_values(value, label):
 
     sample_num = value.shape[0]
 
-    label_idx = np.argmax(label, axis=-1)[np.newaxis, :, np.newaxis]
-    value_idx = np.repeat(label_idx, sample_num, axis=0)
+    label_idx = jnp.argmax(label, axis=-1)[jnp.newaxis, :, jnp.newaxis]
+    value_idx = jnp.repeat(label_idx, sample_num, axis=0)
 
-    true_values = np.take_along_axis(value, value_idx, axis=-1).squeeze(axis=-1)
+    true_values = jnp.take_along_axis(value, value_idx, axis=-1).squeeze(axis=-1)
 
     return true_values

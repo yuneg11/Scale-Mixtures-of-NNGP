@@ -11,7 +11,7 @@ from sklearn.datasets import load_boston
 
 datasets = [
     "boston", "concrete", "energy", "kin8nm",
-    "naval", "plant", "wine-red", "wine-white", "yacht"
+    "naval", "plant", "wine-red", "wine-white", "yacht",
 ]
 
 dataset_urls = {

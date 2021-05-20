@@ -7,6 +7,7 @@ import neural_tangents as nt
 from neural_tangents import stax
 
 from . import data
+from . import utils
 
 
 def add_subparser(subparsers):
@@ -26,14 +27,6 @@ def add_subparser(subparsers):
     parser.add_argument("-a", "--alpha", default=2., type=float)
     parser.add_argument("-b", "--beta", default=2., type=float)
     parser.add_argument("-e", "--epsilon-log-variance", default=8, type=float)
-
-
-def split_kernel(kernel, num_11):
-    kernel_11 = kernel[:num_11, :num_11]
-    kernel_12 = kernel[:num_11, num_11:]
-    kernel_21 = kernel[num_11:, :num_11]
-    kernel_22 = kernel[num_11:, num_11:]
-    return kernel_11, kernel_12, kernel_21, kernel_22
 
 
 def main(dataset, num_hiddens, w_variance, b_variance,
@@ -115,7 +108,7 @@ def main(dataset, num_hiddens, w_variance, b_variance,
 
     conditional_nu = nu + train_num
 
-    split_kernels = split_kernel(covariance, train_num)
+    split_kernels = utils.split_kernel(covariance, train_num)
     kernel_train_train, kernel_train_valid, kernel_valid_train, kernel_valid_valid = split_kernels
 
     inverse_k_11 =jnp.linalg.inv(kernel_train_train + epsilon_variance*jnp.eye(train_num))
@@ -134,7 +127,7 @@ def main(dataset, num_hiddens, w_variance, b_variance,
     mean = jnp.zeros(train_num + test_num)
     covariance = beta / alpha * train_test_nngp_kernel
 
-    split_kernels = split_kernel(covariance, train_num)
+    split_kernels = utils.split_kernel(covariance, train_num)
     kernel_train_train, kernel_train_test, kernel_test_train, kernel_test_test = split_kernels
 
     posterior_kernel = nngp_covariance_2_test
