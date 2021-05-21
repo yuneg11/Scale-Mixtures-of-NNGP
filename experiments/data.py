@@ -6,13 +6,21 @@ import zipfile
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+import tensorflow_datasets as tfds
 from sklearn.datasets import load_boston
 
 
-datasets = [
+regression_datasets = [
     "boston", "concrete", "energy", "kin8nm",
     "naval", "plant", "wine-red", "wine-white", "yacht",
 ]
+
+classification_datasets = [
+    "mnist", "iris", "test_cls",
+]
+
+datasets = regression_datasets + classification_datasets
 
 dataset_urls = {
     "concrete": {
@@ -91,7 +99,9 @@ def _download_dataset(name, root):
                 _extract_zip(filepath)
 
 
-def get_dataset(name, root, y_newaxis=True):
+# Regression
+
+def get_regression_dataset(name, root="./data", y_newaxis=True):
     if name == "boston":  # Boston Housing
         # https://scikit-learn.org/stable/modules/generated/sklearn.datasets.load_boston.html
         x, y = load_boston(return_X_y=True)
@@ -171,19 +181,12 @@ def get_dataset(name, root, y_newaxis=True):
         x, y = data[:, :6], data[:, 6]
 
     else:
-        raise KeyError(f"Unsupported dataset '{name}'")
+        raise KeyError("Unsupported dataset '{}'".format(name))
 
     if y_newaxis:
         y = y[:, np.newaxis]
 
     return x, y
-
-
-def permute_dataset(x, y, seed=0):
-    idx = np.random.RandomState(seed).permutation(x.shape[0])
-    permuted_x = x[idx]
-    permuted_y = y[idx]
-    return permuted_x, permuted_y
 
 
 def split_dataset(
@@ -233,3 +236,105 @@ def split_dataset(
         y_test = (y_test - y_mean) / y_std
 
     return x_train, y_train, x_valid, y_valid, x_test, y_test
+
+
+# Classification
+
+def permute_dataset(x, y, seed=0):
+    idx = np.random.RandomState(seed).permutation(x.shape[0])
+    permuted_x = x[idx]
+    permuted_y = y[idx]
+    return permuted_x, permuted_y
+
+
+def _one_hot(x, k, dtype=np.float32):
+  """Create a one-hot encoding of x of size k."""
+  return np.array(x[:, None] == np.arange(k), dtype)
+
+
+def get_classification_dataset(name, root="./data", train_num=None, test_num=None, seed=0):
+    if name != "test_cls":
+        ds_builder = tfds.builder(name)
+
+    if name == "mnist":
+        ds_train, ds_test = tfds.as_numpy(
+            tfds.load(
+                name,
+                split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
+                    "test" + ("[:%d]" % test_num if test_num is not None else "")],
+                batch_size=-1,
+                as_dataset_kwargs={"shuffle_files": False},
+                data_dir=root,
+            )
+        )
+        dataset = (ds_train["image"], ds_train["label"], ds_test["image"], ds_test["label"])
+        x_train, y_train, x_test, y_test = dataset
+
+        num_classes = ds_builder.info.features["label"].num_classes
+        
+        
+        # DEBUG START -> Move to top of return
+        # y_train_0 = jnp.sum(y_train[:, [0, 2, 4, 6, 8]], axis=1, keepdims=True)
+        # y_train_1 = jnp.sum(y_train[:, [1, 3, 5, 7, 9]], axis=1, keepdims=True)
+        # y_train = jnp.concatenate([y_train_0, y_train_1], axis=1)
+        # DEBUG END
+
+    elif name == "iris":
+        ds_train, = tfds.as_numpy(
+            tfds.load(
+                name,
+                # split=["train" + ("[:%d]" % train_num if train_num is not None else "")],
+                split=["train"],
+                batch_size=-1,
+                as_dataset_kwargs={"shuffle_files": False},
+                data_dir=root,
+            )
+        )
+        x, y = ds_train["features"], ds_train["label"]
+        x, y = permute_dataset(x, y, seed=109)
+        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[train_num:], y[train_num:]
+
+        num_classes = ds_builder.info.features["label"].num_classes
+
+    elif name == "test_cls":
+        func = lambda x: np.sin(x * 3 * np.pi) + 0.3 * np.cos(x * 9 * np.pi) + 0.5 * np.sin(x * 7 * np.pi)
+
+        n = train_num + test_num
+
+        rng = np.random.RandomState(123)
+        # min_x, max_x = -np.pi, +np.pi
+        min_x, max_x = -1, +1
+        x = np.expand_dims(np.linspace(min_x, max_x, n, endpoint=False), axis=1)
+        y = func(x) + 0.2 * rng.randn(n, 1)
+
+        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[train_num:], y[train_num:]
+
+        # x_train = (x_train - np.mean(x_train)) / np.std(x_train)
+        # x_test = (x_test - np.mean(x_train)) / np.std(x_train)
+
+        y_train = np.array(y_train)
+        y_test = np.array(y_test)
+
+        return x_train, y_train, x_test, y_test
+
+    else:
+        raise KeyError("Unsupported dataset '{}'".format(name))
+
+    y_train = _one_hot(y_train, num_classes)
+    y_test = _one_hot(y_test, num_classes)
+
+    x_train, y_train = permute_dataset(x_train, y_train, seed=seed)
+
+    x_train = (x_train - np.mean(x_train)) / np.std(x_train)
+    x_test = (x_test - np.mean(x_train)) / np.std(x_train)
+
+    return x_train, y_train, x_test, y_test
+
+
+def get_dataset(name, root="./data", **kwargs):
+    if name in regression_datasets:
+        return get_regression_dataset(name, root=root, **kwargs)
+    elif name in classification_datasets:
+        return get_classification_dataset(name, root=root, **kwargs)
+    else:
+        raise KeyError("Unsupported dataset '{}'".format(name))

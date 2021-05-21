@@ -1,6 +1,8 @@
 from . import (
     regression,
     classification,
+    
+    classification_base, 
 )
 
 
@@ -12,3 +14,5 @@ def add_subparser(subparsers, increase_depth=False):
 
     regression.add_subparser(subparsers)
     classification.add_subparser(subparsers)
+    
+    classification_base.add_subparser(subparsers)

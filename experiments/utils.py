@@ -1,20 +1,38 @@
-from jax import numpy as jnp
-from jax import random
 import numpy as np
+
+from jax import random
+from jax import numpy as jnp
+from jax.scipy import stats
 
 
 __all__ = [
+    "log",
+    "det",
+    "trace",
+    "matmul",
+    "inverse",
+    "cholesky",
+    "logpdf",
+    
     "TrainBatch",
     "logsumexp",
     "log_softmax",
     "robust_max_values",
     "kron_diag",
-    "matmul2",
     "matmul3",
     "split_kernel",
     "get_true_values",
     "permute_dataset",
 ]
+
+
+log = jnp.log
+det = jnp.linalg.det
+trace = jnp.trace
+matmul = jnp.matmul
+inverse = jnp.linalg.inv
+cholesky = jnp.linalg.cholesky
+logpdf = stats.multivariate_normal.logpdf
 
 
 class TrainBatch:
@@ -88,11 +106,6 @@ def robust_max_values(data, label, class_num, eps=0.001):
 def kron_diag(data, n):
     data_expanded = jnp.kron(jnp.eye(n), data)
     return data_expanded
-
-
-def matmul2(mat0, mat1):
-    mul = jnp.matmul(mat0, mat1)
-    return mul
 
 
 def matmul3(mat0, mat1, mat2):

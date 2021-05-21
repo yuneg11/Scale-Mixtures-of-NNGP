@@ -4,9 +4,9 @@ import argparse
 import warnings
 
 warnings.filterwarnings("ignore")
-# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".80"
+# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".53"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import experiments
 

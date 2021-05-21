@@ -3,6 +3,7 @@ from collections import namedtuple
 import numpy as np
 import tensorflow_datasets as tfds
 
+import jax
 from jax import jit, grad, random
 from jax import numpy as jnp
 from jax.scipy.special import gammaln, digamma
@@ -12,6 +13,8 @@ from neural_tangents import stax
 from neural_tangents.predict import gradient_descent_mse_ensemble
 
 from scipy import stats
+
+from tqdm import tqdm
 
 from .utils import *
 
@@ -40,85 +43,6 @@ def add_subparser(subparsers):
     parser.add_argument("-pi",   "--print_interval",  default=100, type=int)
 
 
-def _one_hot(x, k, dtype=np.float32):
-  """Create a one-hot encoding of x of size k."""
-  return np.array(x[:, None] == np.arange(k), dtype)
-
-
-def get_dataset(name, train_num=None, test_num=None, seed=0):
-    data_dir = "./data"
-    if name != "test":
-        ds_builder = tfds.builder(name)
-
-    if name == "mnist":
-        ds_train, ds_test = tfds.as_numpy(
-            tfds.load(
-                name,
-                split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
-                    "test" + ("[:%d]" % test_num if test_num is not None else "")],
-                batch_size=-1,
-                as_dataset_kwargs={"shuffle_files": False},
-                data_dir=data_dir,
-            )
-        )
-        dataset = (ds_train["image"], ds_train["label"], ds_test["image"], ds_test["label"])
-        x_train, y_train, x_test, y_test = dataset
-
-        num_classes = ds_builder.info.features["label"].num_classes
-
-    elif name == "iris":
-        ds_train, = tfds.as_numpy(
-            tfds.load(
-                name,
-                # split=["train" + ("[:%d]" % train_num if train_num is not None else "")],
-                split=["train"],
-                batch_size=-1,
-                as_dataset_kwargs={"shuffle_files": False},
-                data_dir=data_dir,
-            )
-        )
-        x, y = ds_train["features"], ds_train["label"]
-        x, y = permute_dataset(x, y, seed=109)
-        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[test_num:], y[test_num:]
-
-        num_classes = ds_builder.info.features["label"].num_classes
-
-    elif name == "test":
-        import gpflow
-
-        num_classes = 3
-        n = train_num + test_num
-
-        lengthscales = 0.1
-        jitter_eye = np.eye(n) * 1e-6
-        x = np.random.rand(n, 1)
-        kernel_se = gpflow.kernels.SquaredExponential(lengthscales=lengthscales)
-        k = kernel_se(x) + jitter_eye
-        f = np.random.multivariate_normal(mean=np.zeros(n), cov=k, size=(num_classes)).T
-        y = np.argmax(f, 1).reshape(-1,).astype(int)
-
-        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[test_num:], y[test_num:]
-
-    else:
-        raise KeyError("Unsupported dataset '{}'".format(name))
-
-    y_train = _one_hot(y_train, num_classes)
-    y_test = _one_hot(y_test, num_classes)
-
-    x_train, y_train = permute_dataset(x_train, y_train, seed=seed)
-
-    x_train = (x_train - jnp.mean(x_train)) / jnp.std(x_train)
-    x_test = (x_test - jnp.mean(x_train)) / jnp.std(x_train)
-
-    # TODO: DEBUG START
-    # y_train_0 = jnp.sum(y_train[:, [0, 2, 4, 6, 8]], axis=1, keepdims=True)
-    # y_train_1 = jnp.sum(y_train[:, [1, 3, 5, 7, 9]], axis=1, keepdims=True)
-    # y_train = jnp.concatenate([y_train_0, y_train_1], axis=1)
-    # DEBUG END
-
-    return x_train, y_train, x_test, y_test
-
-
 def get_cnn_kernel(depth, class_num):
     layers = []
     for _ in range(depth):
@@ -133,10 +57,10 @@ def get_cnn_kernel(depth, class_num):
     return  kernel_fn
 
 
-def get_mlp_kernel(depth, class_num):
+def get_mlp_kernel(depth, class_num, W_std=1., b_std=1.):
     layers = []
     for _ in range(depth):
-        layers.append(stax.Dense(512, W_std = 4., b_std = 1.))
+        layers.append(stax.Dense(512, W_std=W_std, b_std=b_std))
         layers.append(stax.Relu())
     layers.append(stax.Dense(class_num, W_std=1))
 
@@ -146,31 +70,62 @@ def get_mlp_kernel(depth, class_num):
     return  kernel_fn
 
 
+# def mean_covariance(
+#     x_batch, inducing_points, kernel_fn,
+#     inducing_mu, inducing_sigma_mat,
+#     batch_num, induce_num, class_num,
+# ):
+#     batch_induced = jnp.concatenate([x_batch, inducing_points], axis=0)
+
+#     inducing_x = inducing_points
+#     inducing_y = jnp.zeros((induce_num, class_num))
+#     predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-4)
+#     _, B_B = predict_fn(x_test=x_batch, get="nngp", compute_cov=True)
+
+#     kernel = kernel_fn(batch_induced, batch_induced, "nngp")
+#     k_b_b, k_b_i, k_i_b, k_i_i = split_kernel(kernel, batch_num)
+#     k_i_i_inverse = jnp.linalg.inv(k_i_i + 1e-0 * jnp.eye(induce_num))
+
+#     A_B = matmul2(k_b_i, k_i_i_inverse)
+#     L = jax.scipy.linalg.cholesky(k_i_i, lower=True)
+#     A_B_L = matmul2(A_B, L)
+#     A_B_L = kron_diag(A_B_L, n=class_num)
+#     B_B = kron_diag(B_B, n=class_num)
+
+#     mean = matmul2(A_B_L, inducing_mu)
+#     covariance = matmul3(A_B_L, inducing_sigma_mat, A_B_L.T) + B_B
+#     covariance_L = jax.scipy.linalg.cholesky(covariance, lower=True)
+
+#     return mean, covariance_L
+
 def mean_covariance(
-    x_batch, inducing_points, kernel_fn,
+    x_batch, inducing_points, kernel_fn, l,
     inducing_mu, inducing_sigma_mat,
     batch_num, induce_num, class_num,
 ):
     batch_induced = jnp.concatenate([x_batch, inducing_points], axis=0)
 
-    inducing_x = inducing_points
-    inducing_y = jnp.zeros((induce_num, class_num))
-    predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-4)
-    _, B_B = predict_fn(x_test=x_batch, get="nngp", compute_cov=True)
+    kernel = kernel_fn(batch_induced, l)
 
-    kernel = kernel_fn(batch_induced, batch_induced, "nngp")
+    # inducing_x = inducing_points
+    # inducing_y = jnp.zeros((induce_num, class_num))
+    # predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-4)
+    # _, B_B = predict_fn(x_test=x_batch, get="nngp", compute_cov=True)
+
+    # kernel = kernel_fn(batch_induced, batch_induced, "nngp")
     k_b_b, k_b_i, k_i_b, k_i_i = split_kernel(kernel, batch_num)
     k_i_i_inverse = jnp.linalg.inv(k_i_i + 1e-4 * jnp.eye(induce_num))
 
+    B_B = k_b_b - matmul3(k_b_i, k_i_i_inverse, k_i_b)
     A_B = matmul2(k_b_i, k_i_i_inverse)
-    L = jnp.linalg.cholesky(k_i_i)
+    L = jax.scipy.linalg.cholesky(k_i_i, lower=True)
     A_B_L = matmul2(A_B, L)
     A_B_L = kron_diag(A_B_L, n=class_num)
     B_B = kron_diag(B_B, n=class_num)
 
     mean = matmul2(A_B_L, inducing_mu)
     covariance = matmul3(A_B_L, inducing_sigma_mat, A_B_L.T) + B_B
-    covariance_L = jnp.linalg.cholesky(covariance)
+    covariance_L = jax.scipy.linalg.cholesky(covariance, lower=True)
 
     return mean, covariance_L
 
@@ -237,9 +192,15 @@ def log_likelihood2(label, sampled_f, class_num, sample_num, test_num):
     return ll
 
 
+def temp_log_likelihood(y_batch, mean, cov, train_num):
+    logpdf = jax.scipy.stats.multivariate_normal.logpdf(y_batch, mean, cov)
+    ll = train_num * jnp.mean(logpdf)
+    return ll
+
+
 def g_ELBO(
     x_batch, y_batch, kernel_fn,
-    inducing_points, inducing_mu, inducing_sigma,
+    inducing_points, inducing_mu, inducing_sigma, l,
     nums, seed=0,
 ):
     sample_num = nums.sample_num
@@ -250,15 +211,19 @@ def g_ELBO(
 
     inducing_sigma_mat = jnp.diag(inducing_sigma)
 
-    mean, covariance_L = mean_covariance(x_batch, inducing_points, kernel_fn,
+    mean, covariance_L = mean_covariance(x_batch, inducing_points, kernel_fn, l,
                                          inducing_mu, inducing_sigma_mat,
                                          batch_num, induce_num, class_num)
 
-    key = random.PRNGKey(seed)
-    sampled_f = g_sample_f_b(sample_num, batch_num, class_num, key)
-    sampled_f = (mean.reshape(-1, 1) + matmul2(covariance_L, sampled_f.T)).T
+    # key = random.PRNGKey(seed)
+    # sampled_f = g_sample_f_b(sample_num, batch_num, class_num, key)
+    # sampled_f = (mean.reshape(-1, 1) + matmul2(covariance_L, sampled_f.T)).T
 
-    ll = log_likelihood(y_batch, sampled_f, batch_num, class_num, sample_num, train_num)
+    # ll = log_likelihood(y_batch, sampled_f, batch_num, class_num, sample_num, train_num)
+
+    cov = matmul2(covariance_L, covariance_L.T)
+    ll = temp_log_likelihood(y_batch, mean, cov, train_num)
+
     kl = g_kl_divergence(inducing_mu, inducing_sigma_mat, class_num, induce_num)
 
     elbo = (ll - kl) / train_num
@@ -294,6 +259,12 @@ def t_ELBO(
     return -elbo
 
 
+def rbf(x, l):
+    k = -((x - x.T) ** 2) / l
+    k = jnp.exp(k)
+    return k
+
+
 def main(dataset, log_name, train_num, test_num, batch_num, induce_num, sample_num,
          test_sample_num, alpha, beta, learning_rate, epochs, print_interval, **kwargs):
 
@@ -312,16 +283,18 @@ def main(dataset, log_name, train_num, test_num, batch_num, induce_num, sample_n
         train_num   = 120
         test_num    = 30
     elif dataset == "test":
-        train_num   = 850
+        train_num   = 8500
         test_num    = 150
 
-    batch_num       = 32
-    induce_num      = 100
+    batch_num       = 100
+    induce_num      = 15
     sample_num      = 10
     test_sample_num = 10000
-    learning_rate   = 0.000001
-    epochs          = 200000
-    print_interval  = 100
+    learning_rate   = 0.0000001
+    epochs          = 20000
+    print_interval  = 5
+    W_std           = 1.
+    b_std           = 1.
     depth           = 4
 
     x_train, y_train, x_test, y_test = get_dataset(dataset, train_num, test_num, seed=seed)
@@ -331,17 +304,22 @@ def main(dataset, log_name, train_num, test_num, batch_num, induce_num, sample_n
     if dataset == "mnist":
         kernel_fn = get_cnn_kernel(depth=depth, class_num=class_num)
     elif dataset == "iris" or dataset == "test":
-        kernel_fn = get_mlp_kernel(depth=depth, class_num=class_num)
+        # kernel_fn = get_mlp_kernel(depth=depth, class_num=class_num, W_std=W_std, b_std=b_std)
+        kernel_fn = rbf
+
+    # kernel = kernel_fn(x_train,x_train, 'nngp')
+
 
     # Init
-    key = random.PRNGKey(10)
-    inducing_points = random.normal(key, shape=(induce_num, *x_train.shape[1:]))
+    # key = random.PRNGKey(10)
+    # inducing_points = random.normal(key, shape=(induce_num, *x_train.shape[1:]))
 
-    # inducing_points = x_train[:induce_num]
+    inducing_points = x_train[:induce_num]
     inducing_mu = jnp.zeros(induce_num * class_num)
     inducing_sigma = jnp.ones(induce_num * class_num)
+    l = 4.
 
-    train_params = (inducing_points, inducing_mu, inducing_sigma)
+    train_params = (inducing_points, inducing_mu, inducing_sigma, l)
 
     # TODO: Refactoring
     nums = namedtuple("nums", [
@@ -353,8 +331,11 @@ def main(dataset, log_name, train_num, test_num, batch_num, induce_num, sample_n
 
     ELBO_jit = g_ELBO
     # ELBO_jit = jit(g_ELBO, static_argnums=(2, 6, 7))
-    grad_elbo = grad(ELBO_jit, argnums=(3, 4, 5))
+    # grad_elbo = grad(ELBO_jit, argnums=(3, 4, 5))
     # grad_elbo = jit(grad_elbo, static_argnums=(2, 6, 7))
+    ELBO_jit = jit(g_ELBO, static_argnums=(2, 7, 8))
+    grad_elbo = grad(ELBO_jit, argnums=(3, 4, 5, 6))
+    grad_elbo = jit(grad_elbo, static_argnums=(2, 7, 8))
 
     opt_init, opt_update, get_params = optimizers.adam(learning_rate)
     opt_state = opt_init(train_params)
@@ -362,12 +343,14 @@ def main(dataset, log_name, train_num, test_num, batch_num, induce_num, sample_n
     # Training
     train_batches = TrainBatch(x_train, y_train, batch_size=batch_num, epochs=epochs+1, seed=seed)
 
-    for i, (x_batch, y_batch) in enumerate(train_batches):
+    # for i, (x_batch, y_batch) in enumerate(train_batches):
+    for i, (x_batch, y_batch) in tqdm(enumerate(train_batches), total=len(train_batches)-1):
         train_params = get_params(opt_state)
 
         if i % print_interval == 0:
             elbo = ELBO_jit(x_batch, y_batch, kernel_fn, *train_params, nums)
-            print("{} / {}: ELBO = {:.7f}".format(i, len(train_batches) - 1, elbo))
+            # print("{} / {}: ELBO = {:.7f}".format(i, len(train_batches) - 1, elbo))
+            tqdm.write("{} / {}: ELBO = {:.7f}".format(i, len(train_batches) - 1, elbo))
             if log_name is not None:
                 log_file.write("{} / {}: ELBO = {:.7f}\n".format(i, len(train_batches) - 1, elbo))
                 log_file.flush()
