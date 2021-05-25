@@ -49,20 +49,12 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     valid_num = len(valid_x)
     test_num = len(test_x)
 
+    train_valid_x = np.concatenate([train_x, valid_x], axis=0)
+    train_valid_y = np.concatenate([train_y, valid_y], axis=0)
 
-    # !TODO: DEBUG START
-    PERMUTE_TRAIN_VALID = True
-
-    if PERMUTE_TRAIN_VALID:
-        train_valid_x = np.concatenate([train_x, valid_x], axis=0)
-        train_valid_y = np.concatenate([train_y, valid_y], axis=0)
-
-        # seed = np.random.randint(0, 1000)
-        train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
-        train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
-        train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
-    # !TODO: DEBUG END
-
+    train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
+    train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
+    train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
 
     train_valid = jnp.concatenate([train_x, valid_x], axis=0)
     train_test = jnp.concatenate([train_x, test_x], axis=0)

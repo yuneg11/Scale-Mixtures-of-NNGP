@@ -17,7 +17,7 @@ regression_datasets = [
 ]
 
 classification_datasets = [
-    "mnist", "iris", "test_cls",
+    "mnist", "cifar10", "cifar100", "iris",
 ]
 
 datasets = regression_datasets + classification_datasets
@@ -252,16 +252,19 @@ def _one_hot(x, k, dtype=np.float32):
   return np.array(x[:, None] == np.arange(k), dtype)
 
 
-def get_classification_dataset(name, root="./data", train_num=None, test_num=None, seed=0):
-    if name != "test_cls":
-        ds_builder = tfds.builder(name)
+def get_classification_dataset(
+    name, root="./data",
+    train_num=None, test_num=None,
+    normalize=True, seed=0
+):
+    ds_builder = tfds.builder(name)
 
-    if name == "mnist":
+    if name in ["mnist", "cifar10", "cifar100"]:
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
                 name,
                 split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
-                    "test" + ("[:%d]" % test_num if test_num is not None else "")],
+                       "test" + ("[:%d]" % test_num if test_num is not None else "")],
                 batch_size=-1,
                 as_dataset_kwargs={"shuffle_files": False},
                 data_dir=root,
@@ -271,13 +274,6 @@ def get_classification_dataset(name, root="./data", train_num=None, test_num=Non
         x_train, y_train, x_test, y_test = dataset
 
         num_classes = ds_builder.info.features["label"].num_classes
-        
-        
-        # DEBUG START -> Move to top of return
-        # y_train_0 = jnp.sum(y_train[:, [0, 2, 4, 6, 8]], axis=1, keepdims=True)
-        # y_train_1 = jnp.sum(y_train[:, [1, 3, 5, 7, 9]], axis=1, keepdims=True)
-        # y_train = jnp.concatenate([y_train_0, y_train_1], axis=1)
-        # DEBUG END
 
     elif name == "iris":
         ds_train, = tfds.as_numpy(
@@ -292,30 +288,11 @@ def get_classification_dataset(name, root="./data", train_num=None, test_num=Non
         )
         x, y = ds_train["features"], ds_train["label"]
         x, y = permute_dataset(x, y, seed=109)
-        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[train_num:], y[train_num:]
+
+        x_train, y_train = x[:train_num], y[:train_num]
+        x_test, y_test = x[train_num: train_num + test_num], y[train_num: train_num + test_num]
 
         num_classes = ds_builder.info.features["label"].num_classes
-
-    elif name == "test_cls":
-        func = lambda x: np.sin(x * 3 * np.pi) + 0.3 * np.cos(x * 9 * np.pi) + 0.5 * np.sin(x * 7 * np.pi)
-
-        n = train_num + test_num
-
-        rng = np.random.RandomState(123)
-        # min_x, max_x = -np.pi, +np.pi
-        min_x, max_x = -1, +1
-        x = np.expand_dims(np.linspace(min_x, max_x, n, endpoint=False), axis=1)
-        y = func(x) + 0.2 * rng.randn(n, 1)
-
-        x_train, y_train, x_test, y_test = x[:train_num], y[:train_num], x[train_num:], y[train_num:]
-
-        # x_train = (x_train - np.mean(x_train)) / np.std(x_train)
-        # x_test = (x_test - np.mean(x_train)) / np.std(x_train)
-
-        y_train = np.array(y_train)
-        y_test = np.array(y_test)
-
-        return x_train, y_train, x_test, y_test
 
     else:
         raise KeyError("Unsupported dataset '{}'".format(name))
@@ -325,8 +302,12 @@ def get_classification_dataset(name, root="./data", train_num=None, test_num=Non
 
     x_train, y_train = permute_dataset(x_train, y_train, seed=seed)
 
-    x_train = (x_train - np.mean(x_train)) / np.std(x_train)
-    x_test = (x_test - np.mean(x_train)) / np.std(x_train)
+    if normalize:
+        x_train = (x_train - np.mean(x_train)) / np.std(x_train)
+        x_test = (x_test - np.mean(x_train)) / np.std(x_train)
+    else:
+        x_train = np.array(x_train).astype(float)
+        x_test = np.array(x_test).astype(float)
 
     return x_train, y_train, x_test, y_test
 

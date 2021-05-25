@@ -2,60 +2,38 @@ import numpy as np
 
 from jax import random
 from jax import numpy as jnp
-from jax.scipy import stats
 
 
 __all__ = [
-    "log",
-    "det",
-    "trace",
-    "matmul",
-    "inverse",
-    "cholesky",
-    "logpdf",
     "TestBatch",
     "TrainBatch",
-    "logsumexp",
-    "log_softmax",
     "robust_max_values",
-    "kron_diag",
-    "matmul3",
     "split_kernel",
     "get_true_values",
-    "permute_dataset",
 ]
 
 
-log = jnp.log
-det = jnp.linalg.det
-trace = jnp.trace
-matmul = jnp.matmul
-inverse = jnp.linalg.inv
-cholesky = jnp.linalg.cholesky
-logpdf = stats.multivariate_normal.logpdf
-
-
 class TrainBatch:
-    def __init__(self, x, y, batch_size, epochs=100, seed=0):
+    def __init__(self, x, y, batch_size, steps=100, seed=0):
         self.x = x
         self.y = y
         self.batch_size = batch_size
-        self.epochs = epochs
+        self.steps = steps
         self.seed = seed
 
     def __iter__(self):
         self.key = random.PRNGKey(self.seed)
-        self.epoch = 0
+        self.step = 0
         return self
 
     def __len__(self):
-        return self.epochs
+        return self.steps
 
     def __next__(self):
-        if self.epoch >= self.epochs:
+        if self.step >= self.steps:
             raise StopIteration
         else:
-            self.epoch += 1
+            self.step += 1
 
         self.key, split = random.split(self.key)
 
@@ -74,7 +52,7 @@ class TestBatch:
         self.x = x
         self.y = y
         self.batch_size = batch_size
-        self.batch_len = (x.shape[0] // batch_size) + (0 if x.shape[0] % batch_size else 1)
+        self.batch_len = (x.shape[0] // batch_size) + (1 if x.shape[0] % batch_size else 0)
 
     def __iter__(self):
         self.batch_i = 0
@@ -86,35 +64,15 @@ class TestBatch:
     def __next__(self):
         if self.batch_i >= self.batch_len:
             raise StopIteration
-        else:
-            self.batch_i += 1
 
         batch_start = self.batch_i * self.batch_size
         batch_end = batch_start + self.batch_size
         x_batch = self.x[batch_start: batch_end]
         y_batch = self.y[batch_start: batch_end]
 
+        self.batch_i += 1
+
         return x_batch, y_batch
-
-
-def permute_dataset(data, label, seed=0):
-    idx = np.random.RandomState(seed).permutation(data.shape[0])
-    permuted_data = data[idx]
-    permuted_label = label[idx]
-    return permuted_data, permuted_label
-
-
-def logsumexp(data):
-    data_max = jnp.max(data, axis=-1, keepdims=True)
-    data_exp = jnp.exp(data - data_max)
-    data_sum = jnp.log(jnp.sum(data_exp, axis=-1, keepdims=True))
-    data_logsumexp = data_sum + data_max
-    return data_logsumexp
-
-
-def log_softmax(data):
-    data_log_softmax = data - logsumexp(data)
-    return data_log_softmax
 
 
 # TODO
@@ -129,16 +87,6 @@ def robust_max_values(data, label, class_num, eps=0.001):
     # idxs = jnp.argmax(data, axis=-1)[..., jnp.newaxis]
     # np.put_along_axis(out, idxs, 1 - eps, axis=-1)  # TODO: replace with jax
     return out
-
-
-def kron_diag(data, n):
-    data_expanded = jnp.kron(jnp.eye(n), data)
-    return data_expanded
-
-
-def matmul3(mat0, mat1, mat2):
-    mul = jnp.matmul(jnp.matmul(mat0, mat1), mat2)
-    return mul
 
 
 def split_kernel(kernel, num_11):

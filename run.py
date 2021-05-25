@@ -1,5 +1,4 @@
 import os
-import sys
 import argparse
 import warnings
 
@@ -7,10 +6,17 @@ warnings.filterwarnings("ignore")
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".50"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0"
+parser = argparse.ArgumentParser(description="NNGP Experiments")
+parser.add_argument("-g", "--gpu", type=int)
+parser.add_argument("-f", "--fraction", type=float)
+args, main_args = parser.parse_known_args()
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+if args.gpu is not None:
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+
+if args.fraction is not None:
+    os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = str(args.fraction)
+
 
 import experiments
 
@@ -26,4 +32,4 @@ def main(raw_args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main(main_args)
