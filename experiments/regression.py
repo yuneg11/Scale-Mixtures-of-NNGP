@@ -19,23 +19,25 @@ def add_subparser(subparsers):
                                    formatter_class=DefaultsFormatter)
     parser.set_defaults(func=main)
 
-    parser.add_argument("-d", "--dataset", choices=data.datasets)
+    parser.add_argument("-d", "--dataset", choices=data.regression_datasets)
     parser.add_argument("-nh", "--num-hiddens", default=1, type=int)
     parser.add_argument("-wv", "--w-variance", default=1., type=float)
     parser.add_argument("-bv", "--b-variance", default=0., type=float)
     parser.add_argument("-act", "--activation", default="erf", choices=["erf", "relu"])
     parser.add_argument("-a", "--alpha", default=2., type=float)
     parser.add_argument("-b", "--beta", default=2., type=float)
-    parser.add_argument("-e", "--epsilon-log-variance", default=8, type=float)
+    parser.add_argument("-e", "--epsilon-log-variance", default=8., type=float)
+    parser.add_argument("-lv", "--last-layer-variance", default=1., type=float)
+    parser.add_argument("-s", "--seed", default=10, type=int)
 
 
-def main(dataset, num_hiddens, w_variance, b_variance,
-         activation, alpha, beta, epsilon_log_variance, **kwargs):
+def main(dataset, num_hiddens, w_variance, b_variance, activation,
+         alpha, beta, epsilon_log_variance, last_layer_variance, seed, **kwargs):
 
     raw_epsilon_log_variance = epsilon_log_variance
     epsilon_log_variance = -6 + epsilon_log_variance / 2
     epsilon_variance = jnp.power(10, epsilon_log_variance)
-    last_layer_variance = 2 * beta / (2 * alpha - 2)
+    # last_layer_variance = 2 * beta / (2 * alpha - 2)
 
     # dataset
     x, y = data.get_dataset(dataset, "./data", y_newaxis=True)
@@ -49,13 +51,13 @@ def main(dataset, num_hiddens, w_variance, b_variance,
 
 
     # !TODO: DEBUG START
-    PERMUTE_TRAIN_VALID = False
+    PERMUTE_TRAIN_VALID = True
 
     if PERMUTE_TRAIN_VALID:
         train_valid_x = np.concatenate([train_x, valid_x], axis=0)
         train_valid_y = np.concatenate([train_y, valid_y], axis=0)
 
-        seed = np.random.randint(0, 1000)
+        # seed = np.random.randint(0, 1000)
         train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
         train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
         train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
@@ -170,10 +172,12 @@ def main(dataset, num_hiddens, w_variance, b_variance,
         in zip(test_y, nngp_mean_test, nngp_std_test)
     ]))
 
+    print("------------------------------------------------------------------")
     print("num_hiddens: {:<2d}  / act:   {}".format(num_hiddens, activation))
     print("w_variance:  {:1.1f} / alpha: {:1.1f}".format(w_variance, alpha))
     print("b_variance:  {:1.1f} / beta:  {:1.1f}".format(b_variance, beta))
     print("epsilon_log_variance: {}".format(raw_epsilon_log_variance))
+    print("last_layer_variance: {}     / seed: {}".format(last_layer_variance, seed))
     print("---------------------------------------------")
     print("Valid NLL for invgamma prior: [{:13.8f}]".format(valid_neg_log_prob_invgamma))
     print("Valid NLL for constant prior: [{:13.8f}]".format(valid_neg_log_prob_constant))
