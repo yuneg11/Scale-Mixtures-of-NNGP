@@ -4,6 +4,7 @@ import numpy as np
 
 
 __all__ = [
+    "TestBatch",
     "TrainBatch",
     "logsumexp",
     "log_softmax",
@@ -47,6 +48,34 @@ class TrainBatch:
 
         x_batch = random_x[:self.batch_size]
         y_batch = random_y[:self.batch_size]
+
+        return x_batch, y_batch
+
+
+class TestBatch:
+    def __init__(self, x, y, batch_size):
+        self.x = x
+        self.y = y
+        self.batch_size = batch_size
+        self.batch_len = (x.shape[0] // batch_size) + (0 if x.shape[0] % batch_size else 1)
+
+    def __iter__(self):
+        self.batch_i = 0
+        return self
+
+    def __len__(self):
+        return self.batch_len
+
+    def __next__(self):
+        if self.batch_i >= self.batch_len:
+            raise StopIteration
+        else:
+            self.batch_i += 1
+
+        batch_start = self.batch_i * self.batch_size
+        batch_end = batch_start + self.batch_size
+        x_batch = self.x[batch_start: batch_end]
+        y_batch = self.y[batch_start: batch_end]
 
         return x_batch, y_batch
 
