@@ -37,10 +37,9 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     epsilon_variance = jnp.power(10, epsilon_log_variance)
     # last_layer_variance = 2 * beta / (2 * alpha - 2)
 
-    train_num = 3500
+    train_num = 4000
     test_num = 1000
     normalize = True
-    depth = 4
     act = "relu"
 
     # dataset
@@ -56,12 +55,12 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     # train_test = jnp.concatenate([x_train, x_test], axis=0)
 
     # Models
-    const_kernel_fn = get_cnn_kernel(depth, class_num, act,
+    const_kernel_fn = get_cnn_kernel(num_hiddens, class_num, act,
                                    W_std=sqrt(w_variance),
                                    b_std=sqrt(b_variance),
                                    last_W_std=sqrt(last_layer_variance))
 
-    inv_kernel_fn = get_cnn_kernel(depth, class_num, act,
+    inv_kernel_fn = get_cnn_kernel(num_hiddens, class_num, act,
                                      W_std=sqrt(w_variance),
                                      b_std=sqrt(b_variance),
                                      last_W_std=1.)

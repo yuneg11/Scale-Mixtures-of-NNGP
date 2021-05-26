@@ -105,7 +105,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     split_kernels = utils.split_kernel(covariance, train_num)
     kernel_train_train, kernel_train_valid, kernel_valid_train, kernel_valid_valid = split_kernels
 
-    inverse_k_11 =jnp.linalg.inv(kernel_train_train + epsilon_variance*jnp.eye(train_num))
+    inverse_k_11 = jnp.linalg.inv(kernel_train_train + epsilon_variance * jnp.eye(train_num))
     d_1 = nu + jnp.matmul(jnp.matmul(train_y.T, inverse_k_11),train_y)
 
     posterior_kernel = nngp_covariance_2_valid
