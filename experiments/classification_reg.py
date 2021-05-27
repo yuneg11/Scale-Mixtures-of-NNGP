@@ -18,10 +18,13 @@ def add_subparser(subparsers):
     parser.set_defaults(func=main)
 
     parser.add_argument("-d", "--dataset", choices=data.classification_datasets)
+    parser.add_argument("-td", "--test-dataset", choices=data.classification_datasets)
+    parser.add_argument("-trn", "--train-num", default=3500, type=int)
+    parser.add_argument("-tsn", "--test-num", default=1000, type=int)
     parser.add_argument("-nh", "--num-hiddens", default=1, type=int)
     parser.add_argument("-wv", "--w-variance", default=1., type=float)
     parser.add_argument("-bv", "--b-variance", default=0., type=float)
-    parser.add_argument("-act", "--activation", default="erf", choices=["erf", "relu"])
+    parser.add_argument("-act", "--activation", default="relu", choices=["erf", "relu"])
     parser.add_argument("-a", "--alpha", default=2., type=float)
     parser.add_argument("-b", "--beta", default=2., type=float)
     parser.add_argument("-e", "--epsilon-log-variance", default=8., type=float)
@@ -29,18 +32,16 @@ def add_subparser(subparsers):
     parser.add_argument("-s", "--seed", default=10, type=int)
 
 
-def main(dataset, num_hiddens, w_variance, b_variance, activation,
-         alpha, beta, epsilon_log_variance, last_layer_variance, seed, **kwargs):
+def main(dataset, test_dataset, num_hiddens, w_variance, b_variance, activation,
+         alpha, beta, epsilon_log_variance, last_layer_variance, seed,
+         train_num, test_num, **kwargs):
 
     raw_epsilon_log_variance = epsilon_log_variance
     epsilon_log_variance = -6 + epsilon_log_variance / 2
     epsilon_variance = jnp.power(10, epsilon_log_variance)
     # last_layer_variance = 2 * beta / (2 * alpha - 2)
 
-    train_num = 4000
-    test_num = 1000
     normalize = True
-    act = "relu"
 
     # dataset
     x_train, y_train, x_test, y_test = data.get_dataset(
@@ -52,15 +53,24 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     )
     class_num = y_train.shape[1]
 
+    if test_dataset is not None:
+        _, _, x_test, y_test = data.get_dataset(
+            test_dataset,
+            train_num=train_num,
+            test_num=test_num,
+            normalize=normalize,
+            seed=seed
+        )
+
     # train_test = jnp.concatenate([x_train, x_test], axis=0)
 
     # Models
-    const_kernel_fn = get_cnn_kernel(num_hiddens, class_num, act,
+    const_kernel_fn = get_cnn_kernel(num_hiddens, class_num, activation,
                                    W_std=sqrt(w_variance),
                                    b_std=sqrt(b_variance),
                                    last_W_std=sqrt(last_layer_variance))
 
-    inv_kernel_fn = get_cnn_kernel(num_hiddens, class_num, act,
+    inv_kernel_fn = get_cnn_kernel(num_hiddens, class_num, activation,
                                      W_std=sqrt(w_variance),
                                      b_std=sqrt(b_variance),
                                      last_W_std=1.)
