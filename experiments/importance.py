@@ -27,18 +27,18 @@ def add_subparser(subparsers):
     parser.add_argument("-wv", "--w-variance", default=1., type=float)
     parser.add_argument("-bv", "--b-variance", default=0., type=float)
     parser.add_argument("-act", "--activation", default="erf", choices=["erf", "relu"])
-    parser.add_argument("-a", "--alpha", default=2., type=float)
-    parser.add_argument("-b", "--beta", default=2., type=float)
+    # parser.add_argument("-a", "--alpha", default=2., type=float)
+    # parser.add_argument("-b", "--beta", default=2., type=float)
     parser.add_argument("-e", "--epsilon-log-variance", default=4., type=float)
-    parser.add_argument("-lv", "--last-layer-variance", default=1., type=float)
+    # parser.add_argument("-lv", "--last-layer-variance", default=1., type=float)
     parser.add_argument("-s", "--seed", default=10, type=int)
     parser.add_argument("-bc", "--burr-c", default=2., type=float)
     parser.add_argument("-bd", "--burr-d", default=1., type=float)
 
-    parser.add_argument("-np", "--nu-p", default=4., type=float)
-    parser.add_argument("-rp", "--rho-p", default=4., type=float)
-    parser.add_argument("-nq", "--nu-q", default=4., type=float)
-    parser.add_argument("-rq", "--rho-q", default=4., type=float)
+    # parser.add_argument("-np", "--nu-p", default=4., type=float)
+    # parser.add_argument("-rp", "--rho-p", default=4., type=float)
+    # parser.add_argument("-nq", "--nu-q", default=4., type=float)
+    # parser.add_argument("-rq", "--rho-q", default=4., type=float)
 
 
 def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
@@ -59,9 +59,9 @@ def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
     return kernel_fn
 
 
-def main(dataset, num_hiddens, w_variance, b_variance, activation,
-         epsilon_log_variance, last_layer_variance, seed, dist,
-         burr_c, burr_d, nu_p, rho_p, nu_q, rho_q, sample_num, **kwargs):
+def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_d,
+         epsilon_log_variance, seed, dist, sample_num, last_layer_variance=None,
+         nu_p=None, rho_p=None, nu_q=None, rho_q=None, **kwargs):
 
     raw_epsilon_log_variance = epsilon_log_variance
     epsilon_log_variance = -6 + epsilon_log_variance / 2
@@ -78,20 +78,21 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     valid_num = len(valid_x)
     test_num = len(test_x)
 
-    train_valid_x = np.concatenate([train_x, valid_x], axis=0)
-    train_valid_y = np.concatenate([train_y, valid_y], axis=0)
+    if seed >= 0:
+        train_valid_x = np.concatenate([train_x, valid_x], axis=0)
+        train_valid_y = np.concatenate([train_y, valid_y], axis=0)
 
-    train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
-    train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
-    train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
+        train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
+        train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
+        train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
 
     # Models
     W_std = jnp.sqrt(w_variance)
     b_std = jnp.sqrt(b_variance)
-    last_W_std = jnp.sqrt(last_layer_variance)
+    # last_W_std = jnp.sqrt(last_layer_variance)
 
     kernel_fn_is = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=1.)
-    kernel_fn_const = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=last_W_std)
+    # kernel_fn_const = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=last_W_std)
 
     # Importance
 
@@ -140,31 +141,34 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
 
     # Const
 
-    predict_fn_const = gradient_descent_mse_ensemble(kernel_fn_const, train_x, train_y, diag_reg=epsilon_variance)
-    nngp_mean_const_valid, nngp_covariance_const_valid = predict_fn_const(x_test=valid_x, get="nngp", compute_cov=True)
-    nngp_mean_const_test, nngp_covariance_const_test = predict_fn_const(x_test=test_x, get="nngp", compute_cov=True)
+    # predict_fn_const = gradient_descent_mse_ensemble(kernel_fn_const, train_x, train_y, diag_reg=epsilon_variance)
+    # nngp_mean_const_valid, nngp_covariance_const_valid = predict_fn_const(x_test=valid_x, get="nngp", compute_cov=True)
+    # nngp_mean_const_test, nngp_covariance_const_test = predict_fn_const(x_test=test_x, get="nngp", compute_cov=True)
 
-    # nngp_mean_const_valid = nngp_mean_const_valid[:, None, None]
-    nngp_std_const_valid = jnp.sqrt(jnp.diag(nngp_covariance_const_valid))
+    # # nngp_mean_const_valid = nngp_mean_const_valid[:, None, None]
+    # nngp_std_const_valid = jnp.sqrt(jnp.diag(nngp_covariance_const_valid))
 
-    # nngp_mean_const_test = nngp_mean_const_test[:, None, None]
-    nngp_std_const_test = jnp.sqrt(jnp.diag(nngp_covariance_const_test))
+    # # nngp_mean_const_test = nngp_mean_const_test[:, None, None]
+    # nngp_std_const_test = jnp.sqrt(jnp.diag(nngp_covariance_const_test))
 
 
     def mcnll_const(test_y, mean, std):
         neg_log_prob = -stats.norm.logpdf(test_y, mean, std)
         return neg_log_prob
 
-    def mcnll_is(test_y, mean, std, w_bar):
-        test_y = jnp.concatenate([test_y] * len(mean)).reshape(-1,1)
-        prob = jnp.sum(w_bar * stats.norm.pdf(test_y, mean, std))
-        neg_log_prob = -jnp.log(prob)
-        return neg_log_prob
 
     # def mcnll_is(test_y, mean, std, w_bar):
     #     test_y = jnp.concatenate([test_y] * len(mean)).reshape(-1,1)
-    #     neg_log_prob = -logsumexp(jnp.log(w_bar) + stats.norm.logpdf(test_y, mean, std))
-    #     return jnp.sum(neg_log_prob)
+    #     prob = jnp.sum(w_bar * stats.norm.pdf(test_y, mean, std))
+    #     neg_log_prob = -jnp.log(prob)
+    #     return neg_log_prob
+
+
+    def mcnll_is(test_y, mean, std, w_bar):
+        test_y = jnp.concatenate([test_y] * len(mean)).reshape(-1,1)
+        k = jnp.log(w_bar + 1e-24) + stats.norm.logpdf(test_y, mean, std)
+        neg_log_prob = -logsumexp(k.flatten(), axis=0)
+        return jnp.sum(neg_log_prob)
 
     # calculate nll for test points
     neg_log_prob_is_valid = 0
@@ -177,15 +181,15 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
         neg_log_prob_is_test += mcnll_is(test_y_i, nngp_mean_is_test[:, i], nngp_std_is_test[:, i], w_bar)
     neg_log_prob_is_test /= test_num
 
-    neg_log_prob_constant_valid = 0
-    for i, valid_y_i in enumerate(valid_y):
-        neg_log_prob_constant_valid += jnp.squeeze(mcnll_const(valid_y_i, nngp_mean_const_valid[i], nngp_std_const_valid[i]))
-    neg_log_prob_constant_valid /= valid_num
+    # neg_log_prob_constant_valid = 0
+    # for i, valid_y_i in enumerate(valid_y):
+    #     neg_log_prob_constant_valid += jnp.squeeze(mcnll_const(valid_y_i, nngp_mean_const_valid[i], nngp_std_const_valid[i]))
+    # neg_log_prob_constant_valid /= valid_num
 
-    neg_log_prob_constant_test = 0
-    for i, test_y_i in enumerate(test_y):
-        neg_log_prob_constant_test += jnp.squeeze(mcnll_const(test_y_i, nngp_mean_const_test[i], nngp_std_const_test[i]))
-    neg_log_prob_constant_test /= test_num
+    # neg_log_prob_constant_test = 0
+    # for i, test_y_i in enumerate(test_y):
+    #     neg_log_prob_constant_test += jnp.squeeze(mcnll_const(test_y_i, nngp_mean_const_test[i], nngp_std_const_test[i]))
+    # neg_log_prob_constant_test /= test_num
 
 
     print("------------------------------------------------------------------")
@@ -196,6 +200,6 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     print("last_layer_variance: {}     / seed: {}".format(last_layer_variance, seed))
     print("---------------------------------------------")
     print("Valid NLL for burr 12 prior:  [{:13.8f}]".format(neg_log_prob_is_valid))
-    print("Valid NLL for constant prior: [{:13.8f}]".format(neg_log_prob_constant_valid))
+    # print("Valid NLL for constant prior: [{:13.8f}]".format(neg_log_prob_constant_valid))
     print("Test NLL for burr 12 prior:   [{:13.8f}]".format(neg_log_prob_is_test))
-    print("Test NLL for constant prior:  [{:13.8f}]".format(neg_log_prob_constant_test))
+    # print("Test NLL for constant prior:  [{:13.8f}]".format(neg_log_prob_constant_test))

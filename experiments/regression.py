@@ -49,12 +49,13 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
     valid_num = len(valid_x)
     test_num = len(test_x)
 
-    train_valid_x = np.concatenate([train_x, valid_x], axis=0)
-    train_valid_y = np.concatenate([train_y, valid_y], axis=0)
+    if seed >= 0:
+        train_valid_x = np.concatenate([train_x, valid_x], axis=0)
+        train_valid_y = np.concatenate([train_y, valid_y], axis=0)
 
-    train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
-    train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
-    train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
+        train_valid_x, train_valid_y = data.permute_dataset(train_valid_x, train_valid_y, seed=seed)
+        train_x, valid_x = train_valid_x[:train_num], train_valid_x[train_num:]
+        train_y, valid_y = train_valid_y[:train_num], train_valid_y[train_num:]
 
     train_valid = jnp.concatenate([train_x, valid_x], axis=0)
     train_test = jnp.concatenate([train_x, test_x], axis=0)
@@ -164,12 +165,12 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation,
         in zip(test_y, nngp_mean_test, nngp_std_test)
     ]))
 
-    print("------------------------------------------------------------------")
+    print("-------------------------------------------------------------")
     print("num_hiddens: {:<2d}  / act:   {}".format(num_hiddens, activation))
     print("w_variance:  {:1.1f} / alpha: {:1.1f}".format(w_variance, alpha))
     print("b_variance:  {:1.1f} / beta:  {:1.1f}".format(b_variance, beta))
-    print("epsilon_log_variance: {}".format(raw_epsilon_log_variance))
-    print("last_layer_variance: {}     / seed: {}".format(last_layer_variance, seed))
+    print("epsilon_log_variance: {:.2f}".format(raw_epsilon_log_variance))
+    print("last_layer_variance: {:.2f}        / seed: {}".format(last_layer_variance, seed))
     print("---------------------------------------------")
     print("Valid NLL for invgamma prior: [{:13.8f}]".format(valid_neg_log_prob_invgamma))
     print("Valid NLL for constant prior: [{:13.8f}]".format(valid_neg_log_prob_constant))

@@ -52,10 +52,10 @@ __all__ = [
 ]
 
 
-def logsumexp(data):
-    data_max = jnp.max(data, axis=-1, keepdims=True)
+def logsumexp(data, axis=-1):
+    data_max = jnp.max(data, axis=axis, keepdims=True)
     data_exp = jnp.exp(data - data_max)
-    data_sum = jnp.log(jnp.sum(data_exp, axis=-1, keepdims=True))
+    data_sum = jnp.log(jnp.sum(data_exp, axis=axis, keepdims=True))
     data_logsumexp = data_sum + data_max
     return data_logsumexp
 
