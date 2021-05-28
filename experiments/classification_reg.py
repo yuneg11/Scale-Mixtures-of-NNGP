@@ -103,37 +103,35 @@ def main(dataset, test_dataset, num_hiddens, w_variance, b_variance, activation,
     ]))
 
     # Test
-    for alpha in [2, 4]:
-        for beta in [2, 4]:
-            kernel_train_train = beta / alpha * const_kernel_fn(x_train, x_train, "nngp")
+    kernel_train_train = beta / alpha * const_kernel_fn(x_train, x_train, "nngp")
 
-            nu = 2 * alpha
-            conditional_nu = nu + train_num * class_num
+    nu = 2 * alpha
+    conditional_nu = nu + train_num * class_num
 
-            inverse_k_11 = inv(kernel_train_train + epsilon_variance * eye(train_num))
+    inverse_k_11 = inv(kernel_train_train + epsilon_variance * eye(train_num))
 
-            d_1 = nu + sum(diag(matmul3(y_train.T, inverse_k_11, y_train)))
+    d_1 = nu + sum(diag(matmul3(y_train.T, inverse_k_11, y_train)))
 
-            posterior_kernel = inv_nngp_covariance_test
-            conditional_kernel = d_1 / conditional_nu * beta / alpha * posterior_kernel
+    posterior_kernel = inv_nngp_covariance_test
+    conditional_kernel = d_1 / conditional_nu * beta / alpha * posterior_kernel
 
-            test_std = sqrt(diag(conditional_kernel))
+    test_std = sqrt(diag(conditional_kernel))
 
-            # make nll calculator for test points
+    # make nll calculator for test points
 
-            test_neg_log_prob_invgamma = mean(array([
-                studentt_nll(y, conditional_nu, nngp_mean, std)
-                for y, nngp_mean, std
-                in zip(y_test, const_nngp_mean_test, test_std)
-            ]))
+    test_neg_log_prob_invgamma = mean(array([
+        studentt_nll(y, conditional_nu, nngp_mean, std)
+        for y, nngp_mean, std
+        in zip(y_test, const_nngp_mean_test, test_std)
+    ]))
 
-            print("------------------------------------------------------------------")
-            print("num_hiddens: {:<2d}  / act:   {}".format(num_hiddens, activation))
-            print("w_variance:  {:1.1f} / alpha: {:1.1f}".format(w_variance, alpha))
-            print("b_variance:  {:1.1f} / beta:  {:1.1f}".format(b_variance, beta))
-            print("epsilon_log_variance: {}".format(raw_epsilon_log_variance))
-            print("last_layer_variance: {}     / seed: {}".format(last_layer_variance, seed))
-            print("---------------------------------------------")
-            print("Test NLL for invgamma prior:  [{:13.8f}]".format(test_neg_log_prob_invgamma))
-            print("Test NLL for constant prior:  [{:13.8f}]".format(test_neg_log_prob_constant))
-            print("Accuracy: {:.4f}".format(acc))
+    print("------------------------------------------------------------------")
+    print("num_hiddens: {:<2d}  / act:   {}".format(num_hiddens, activation))
+    print("w_variance:  {:1.1f} / alpha: {:1.1f}".format(w_variance, alpha))
+    print("b_variance:  {:1.1f} / beta:  {:1.1f}".format(b_variance, beta))
+    print("epsilon_log_variance: {}".format(raw_epsilon_log_variance))
+    print("last_layer_variance: {}     / seed: {}".format(last_layer_variance, seed))
+    print("---------------------------------------------")
+    print("Test NLL for invgamma prior:  [{:13.8f}]".format(test_neg_log_prob_invgamma))
+    print("Test NLL for constant prior:  [{:13.8f}]".format(test_neg_log_prob_constant))
+    print("Accuracy: {:.4f}".format(acc))

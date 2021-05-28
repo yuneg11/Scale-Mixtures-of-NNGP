@@ -267,8 +267,7 @@ def get_classification_dataset(
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
                 name,
-                split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
-                       "test" + ("[:%d]" % test_num if test_num is not None else "")],
+                split=["train", "test"],
                 batch_size=-1,
                 as_dataset_kwargs={"shuffle_files": False},
                 data_dir=root,
