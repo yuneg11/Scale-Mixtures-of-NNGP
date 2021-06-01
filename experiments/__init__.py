@@ -3,6 +3,7 @@ from . import (
     classification,
     classification_reg,
     importance,
+    classification_is,
 )
 
 
@@ -16,3 +17,4 @@ def add_subparser(subparsers, increase_depth=False):
     classification.add_subparser(subparsers)
     classification_reg.add_subparser(subparsers)
     importance.add_subparser(subparsers)
+    classification_is.add_subparser(subparsers)
