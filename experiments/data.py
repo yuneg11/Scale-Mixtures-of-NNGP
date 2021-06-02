@@ -14,6 +14,7 @@ from sklearn.datasets import load_boston
 regression_datasets = [
     "boston", "concrete", "energy", "kin8nm", "naval",
     "plant", "wine-red", "wine-white", "yacht", "rainfall",
+    "syn_normal", "syn_t",
 ]
 
 classification_datasets = [
@@ -197,6 +198,25 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
         data = txt_data.to_numpy()
 
         x, y = data[:, :2], data[:, 2]
+
+    elif name == "syn_normal":
+        num = 100
+        rs = np.random.RandomState(829)
+
+        x = np.linspace(-num / 2, num / 2, num)[:, None]
+        cov = np.exp(-0.5 * (x - x.T) ** 2)
+
+        y = rs.multivariate_normal(mean=np.zeros(num), cov=cov, size=1).flatten() \
+          + rs.standard_normal(size=num) * 0.2
+        
+    elif name == "syn_t":
+        num = 100
+        rs = np.random.RandomState(777)
+
+        x = np.linspace(-num / 2, num / 2, num)[:, None]
+        cov = np.exp(-0.5 * (x - x.T) ** 2)
+        y = rs.multivariate_normal(mean=np.zeros(num), cov=cov, size=1).flatten() \
+          + rs.standard_t(df=1, size=num) * 0.2
 
     else:
         raise KeyError("Unsupported dataset '{}'".format(name))
