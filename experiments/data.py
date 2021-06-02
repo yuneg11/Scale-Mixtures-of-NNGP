@@ -17,8 +17,12 @@ regression_datasets = [
 ]
 
 classification_datasets = [
-    "mnist", "cifar10", "cifar100", "emnist", "fashion_mnist", "iris",
-    "mnist_corrupted/shot_noise", "mnist_corrupted/impulse_noise",
+    "mnist", "cifar10", "cifar100", "svhn_cropped",
+    "emnist", "fashion_mnist",
+    "mnist_corrupted/shot_noise",
+    "mnist_corrupted/impulse_noise",
+    "mnist_corrupted/fog",
+    "mnist_corrupted/spatter",
 ]
 
 datasets = regression_datasets + classification_datasets
@@ -274,8 +278,12 @@ def get_classification_dataset(
     ds_builder = tfds.builder(name)
 
     if name in [
-        "mnist", "cifar10", "cifar100", "emnist", "fashion_mnist",
-        "mnist_corrupted/shot_noise", "mnist_corrupted/impulse_noise",
+        "mnist", "cifar10", "cifar100", "svhn_cropped",
+        "emnist", "fashion_mnist",
+        "mnist_corrupted/shot_noise",
+        "mnist_corrupted/impulse_noise",
+        "mnist_corrupted/fog",
+        "mnist_corrupted/spatter",
     ]:
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(

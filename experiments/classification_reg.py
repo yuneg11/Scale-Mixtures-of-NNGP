@@ -43,8 +43,8 @@ def studentt_nll(y_test, freedom, mean, std):
 
 
 def main(dataset, test_dataset, num_hiddens, w_variance, b_variance, activation,
-         alpha, beta, epsilon_log_variance, last_layer_variance, seed,
-         train_num, test_num, **kwargs):
+         alpha, beta, epsilon_log_variance, last_layer_variance, seed, train_num,
+         test_num, **kwargs):
 
     raw_epsilon_log_variance = epsilon_log_variance
     epsilon_log_variance = -6 + epsilon_log_variance / 2
@@ -111,24 +111,19 @@ def main(dataset, test_dataset, num_hiddens, w_variance, b_variance, activation,
         in zip(y_test, const_nngp_mean_test, const_nngp_std_test)
     ]))
 
+    const_kernel = const_kernel_fn(x_train, x_train, "nngp")
+    inverse_k_11_const = inv(const_kernel + epsilon_variance * eye(train_num))
+    d_1_const = sum(diag(matmul3(y_train.T, inverse_k_11_const, y_train)))
+
     # Test
     for alpha in [0.5, 1., 2., 4.]:
         for beta in [0.5, 1., 2., 4.]:
-            kernel_train_train = beta / alpha * const_kernel_fn(x_train, x_train, "nngp")
-
             nu = 2 * alpha
             conditional_nu = nu + train_num * class_num
-
-            inverse_k_11 = inv(kernel_train_train + epsilon_variance * eye(train_num))
-
-            d_1 = nu + sum(diag(matmul3(y_train.T, inverse_k_11, y_train)))
-
-            posterior_kernel = inv_nngp_covariance_test
-            conditional_kernel = d_1 / conditional_nu * beta / alpha * posterior_kernel
+            d_1 = nu + d_1_const * alpha / beta
+            conditional_kernel = d_1 / conditional_nu * beta / alpha * inv_nngp_covariance_test
 
             test_std = sqrt(diag(conditional_kernel))
-
-            # make nll calculator for test points
 
             test_neg_log_prob_invgamma = mean(array([
                 studentt_nll(y, conditional_nu, nngp_mean, std)
