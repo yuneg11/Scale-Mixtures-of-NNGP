@@ -211,7 +211,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
                     nll_test_burr12 += mc_nll(test_y_i, mean_test[:, i], std_test[:, i], w_bar)
                 nll_test_burr12 /= test_num
 
-                utils.print_yaml(type="invgamma", **base_args,
+                utils.print_yaml(type="burr12", **base_args,
                                  **{"burr_c": burr_c, "burr_d": burr_d,
                                     "valid-nll": round(float(nll_valid_burr12), 6),
                                     "test-nll": round(float(nll_test_burr12), 6)})
