@@ -89,6 +89,7 @@ def main(dataset, test_dataset, train_num, test_num,
         "b-variance": b_variance,
         "activation": activation,
         "eps-log-var": epsilon_log_variance,
+        "seed": seed,
     }
 
     W_std = sqrt(w_variance)

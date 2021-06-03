@@ -82,6 +82,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
         "b-variance": b_variance,
         "activation": activation,
         "eps-log-var": epsilon_log_variance,
+        "seed": seed,
     }
 
     W_std = sqrt(w_variance)
