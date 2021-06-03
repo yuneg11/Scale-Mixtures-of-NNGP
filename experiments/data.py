@@ -13,7 +13,7 @@ from sklearn.datasets import load_boston
 
 regression_datasets = [
     "boston", "concrete", "energy", "kin8nm", "naval",
-    "plant", "wine-red", "wine-white", "yacht", "rainfall",
+    "plant", "wine-red", "wine-white", "yacht", "sic97",
     "syn_normal", "syn_t",
 ]
 
@@ -189,11 +189,11 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
 
         x, y = data[:, :6], data[:, 6]
 
-    elif name == "rainfall":  # Switzerland Rainfall
+    elif name == "sic97":  # Switzerland Rainfall
         # https://wiki.52north.org/AI_GEOSTATS/AI_GEOSTATSData
         _download_dataset(name, root)
 
-        filepath = os.path.join(root, "rainfall/sic_full.dat")
+        filepath = os.path.join(root, "sic97/sic_full.dat")
         txt_data = pd.read_table(filepath, sep=",", index_col=0, skiprows=6, header=None)
         data = txt_data.to_numpy()
 
@@ -308,9 +308,9 @@ def get_classification_dataset(
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
                 name,
-                # split=["train", "test"],
-                split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
-                       "test"  + ("[:%d]" % test_num if test_num is not None else "")],
+                split=["train", "test"],
+                # split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
+                #        "test"  + ("[:%d]" % test_num if test_num is not None else "")],
                 batch_size=-1,
                 as_dataset_kwargs={"shuffle_files": False},
                 data_dir=root,
@@ -318,9 +318,6 @@ def get_classification_dataset(
         )
         x_train, y_train = ds_train["image"], ds_train["label"]
         x_test, y_test = ds_test["image"], ds_test["label"]
-
-        # x_test, y_test = permute_dataset(x_test, y_test, seed=109)
-        # x_test, y_test = x_test[:test_num], y_test[:test_num]
 
         num_classes = ds_builder.info.features["label"].num_classes
 
@@ -331,8 +328,8 @@ def get_classification_dataset(
     y_test = _one_hot(y_test, num_classes)
 
     x_train, y_train = permute_dataset(x_train, y_train, seed=seed)
-    # x_train, y_train = x_train[:train_num], y_train[:train_num]
-    # x_test, y_test = x_test[:test_num], y_test[:test_num]
+    x_train, y_train = x_train[:train_num], y_train[:train_num]
+    x_test, y_test = x_test[:test_num], y_test[:test_num]
 
     if normalize:
         x_train = (x_train - np.mean(x_train)) / np.std(x_train)
