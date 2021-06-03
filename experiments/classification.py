@@ -1,155 +1,221 @@
-from jax import random
-from jax import numpy as jnp
-from jax.experimental import optimizers
+import numpy as np
+from scipy import stats
 
-from tqdm import tqdm
+from jax import jit
+
+from neural_tangents import stax
+from neural_tangents.predict import gradient_descent_mse_ensemble
 
 from . import data
+from . import utils
 from .ops import *
-from .utils import *
-from .classification_utils import *
-
-from . import svgp
-from . import svtp
 
 
 def add_subparser(subparsers):
-    from argparse import ArgumentDefaultsHelpFormatter as DefaultsFormatter
-
-    parser = subparsers.add_parser("classification",
-                                   aliases=["cls"],
-                                   help="classification",
-                                   formatter_class=DefaultsFormatter)
+    parser = subparsers.add_parser("classification", aliases=["cls"], help="classification")
     parser.set_defaults(func=main)
 
-    parser.add_argument("method",                     choices=["svgp", "svtp"])
-    parser.add_argument("-d",    "--dataset",         choices=data.classification_datasets)
-    parser.add_argument("-log",  "--log-dir",         required=False)
-    parser.add_argument("-trn",  "--train-num",       default=10000, type=int)
-    parser.add_argument("-tsn",  "--test-num",        default=1000, type=int)
-    parser.add_argument("-bs",   "--batch-size",      default=128, type=int)
-    parser.add_argument("-in",   "--induce-num",      default=100, type=int)
-    parser.add_argument("-sn",   "--sample-num",      default=100, type=int)
-    parser.add_argument("-tssn", "--test-sample-num", default=10000, type=int)
-    parser.add_argument("-a",    "--alpha",           default=4., type=float)
-    parser.add_argument("-b",    "--beta",            default=4., type=float)
-    parser.add_argument("-lr",   "--learning_rate",   default=0.001, type=float)
-    parser.add_argument("-pi",   "--print-interval",  default=100, type=int)
-    parser.add_argument("-ks",   "--kernel-scale",   default=1., type=float)
-    parser.add_argument("-act",  "--activation",      default="relu", choices=["erf", "relu"])
-    parser.add_argument("-wv",   "--w-variance",      default=1., type=float)
-    parser.add_argument("-bv",   "--b-variance",      default=0., type=float)
-    parser.add_argument("-lwv",  "--last-w-variance", default=1., type=float)
-    parser.add_argument("-ti",   "--test-interval",   default=500, type=int)
-    parser.add_argument("-dp",   "--depth",           default=4, type=int)
-    parser.add_argument("-opt",  "--optimizer",       default="adam",  choices=["adam", "sgd"])
-    parser.add_argument("-e",    "--steps",           default=20000, type=int)
-    parser.add_argument("-s",    "--seed",            default=10, type=int)
-    parser.add_argument("-nn",   "--no-normalize",    default=False, action="store_true")
+    parser.add_argument("dataset", choices=data.classification_datasets)
+    parser.add_argument("test_dataset", nargs="?", choices=data.classification_datasets)
+    parser.add_argument("-trn", "--train-num", default=3500, type=int)
+    parser.add_argument("-tsn", "--test-num", default=1000, type=int)
+
+    parser.add_argument("-nh", "--num-hiddens", default=1, type=int)
+    parser.add_argument("-wv", "--w-variance", default=1., type=float)
+    parser.add_argument("-bv", "--b-variance", default=0., type=float)
+    parser.add_argument("-act", "--activation", default="relu", choices=["erf", "relu"])
+    parser.add_argument("-e", "--epsilon-log-variance", default=5., type=float)
+    parser.add_argument("-s", "--seed", default=10, type=int)
+
+    parser.add_argument("-lv", "--last-layer-variance")
+    
+    parser.add_argument("-a", "--alpha")
+    parser.add_argument("-b", "--beta")
+
+    parser.add_argument("-bc", "--burr-c")
+    parser.add_argument("-bd", "--burr-d")
+    parser.add_argument("-sn", "--sample-num", default=1000, type=int)
 
 
-def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, depth, log_dir,
-         alpha, beta, optimizer, learning_rate, steps, batch_size,
-         print_interval, sample_num, kernel_scale, test_sample_num, test_interval,
-         w_variance, b_variance, last_w_variance, activation, **kwargs):
+def get_kernel_fn(depth, class_num, W_std, b_std, last_W_std=1., act="erf"):
+    if act == "relu":
+        act_class = stax.Relu
+    elif act == "erf":
+        act_class = stax.Erf
+    else:
+        raise KeyError("Unsupported act '{}'".format(act))
 
-    if log_dir is not None:
-        if method == "svgp":
-            log_name =  "/{}-{}-{}-{}.txt".format(depth, w_variance, b_variance, last_w_variance)
-        elif method == "svtp":
-            log_name = "/{}-{}-{}-{}-{}-{}.txt".format(depth, w_variance, b_variance, last_w_variance, alpha, beta)
-        log_file = open(log_dir + log_name, "w")
+    layers = []
+    for _ in range(depth):
+        layers.append(stax.Conv(1, (3, 3), (1, 1), "SAME", W_std=W_std, b_std=b_std))
+        layers.append(act_class())
+    layers.append(stax.Flatten())
+    layers.append(stax.Dense(class_num, W_std=last_W_std))
+
+    init_fn, apply_fn, kernel_fn = stax.serial(*layers)
+    kernel_fn = jit(kernel_fn, static_argnums=(2,))
+    return kernel_fn
+
+
+def gaussian_nll(y_test, mean, std):
+    neg_log_prob = -stats.norm.logpdf(y_test, mean, std)
+    return neg_log_prob
+
+
+def student_t_nll(y_test, df, mean, std):
+    neg_log_prob = -stats.t.logpdf(y_test, df, mean, std)
+    return neg_log_prob
+
+
+def mc_nll(y_test, mean, std, w_bar):
+    prob = sum(array([
+        stats.norm.logpdf(test_y_c, mean_c, std)
+        for test_y_c, mean_c
+        in zip(y_test, mean)
+    ]), axis=0)
+    neg_log_prob = -logsumexp(log(w_bar + 1e-24).flatten() + prob)
+    return sum(neg_log_prob)
+
+
+def main(dataset, test_dataset, train_num, test_num,
+         num_hiddens, w_variance, b_variance, activation, burr_c, burr_d, alpha, beta,
+         epsilon_log_variance, seed, sample_num, last_layer_variance, **kwargs):
+
+    # Argument process
+
+    base_args = {
+        "num-hiddens": num_hiddens,
+        "w-variance": w_variance,
+        "b-variance": b_variance,
+        "activation": activation,
+        "eps-log-var": epsilon_log_variance,
+    }
+
+    W_std = sqrt(w_variance)
+    b_std = sqrt(b_variance)
+    eps = power(10, -6 + epsilon_log_variance / 2)
+
+    invgamma, alpha_set, beta_set = utils.process_invgamma_args(alpha, beta)
+    burr12, burr_c_set, burr_d_set = utils.process_burr12_args(burr_c, burr_d)
+    const, last_W_std = utils.process_const_args(last_layer_variance)
+
+    if not const and not invgamma and not burr12:
+        print("No distribution is selected.")
+        exit(-1)
 
     # Dataset
+
     x_train, y_train, x_test, y_test = data.get_dataset(
-        dataset,
-        train_num=train_num,
-        test_num=test_num,
-        normalize=(not no_normalize),
-        seed=seed
+        dataset, train_num=train_num, test_num=test_num, normalize=True, seed=seed,
     )
     class_num = y_train.shape[1]
 
-    # Kernel
-    if dataset in ["mnist", "cifar10", "cifar100"]:
-        kernel_fn = get_cnn_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
-    elif dataset in ["iris"]:
-        kernel_fn = get_mlp_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
-    else:
-        raise ValueError("Unsupported dataset '{}'".format(dataset))
+    if test_dataset is not None:
+        _, _, x_test, y_test = data.get_dataset(
+            test_dataset, train_num=1, test_num=test_num, normalize=True, seed=seed,
+        )
 
-    # Init
-    key = random.PRNGKey(10)
+    # Compute
 
-    inducing_points = x_train[:induce_num]
-    inducing_mu = jnp.zeros(induce_num * class_num)
-    inducing_sigma = jnp.ones(induce_num * class_num)
+    if invgamma or burr12:
+        kernel_fn = get_kernel_fn(num_hiddens, class_num,
+                                  W_std=W_std, b_std=b_std,
+                                  last_W_std=1., act=activation)
+        predict_fn = gradient_descent_mse_ensemble(kernel_fn, x_train, y_train, diag_reg=eps)
+        mean_test, cov_test = predict_fn(x_test=x_test, get="nngp", compute_cov=True)
+        cov_train = kernel_fn(x_train, x_train, get="nngp")
 
-    if method == "svgp":
-        train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points)
-        train_consts = (train_num, class_num, sample_num, induce_num, batch_size)
-        test_consts = (test_num, class_num, test_sample_num, induce_num)
-        test_nll_acc = svgp.test_nll_acc
-    elif method == "svtp":
-        invgamma_a = alpha
-        invgamma_b = beta
+        predict_label = argmax(mean_test, axis=1)
+        true_label = argmax(y_test, axis=1)
+        acc = mean(predict_label == true_label)
 
-        train_vars = svtp.get_train_vars(inducing_mu, inducing_sigma, inducing_points,
-                                         invgamma_a, invgamma_b)
-        train_consts = (alpha, beta, train_num, class_num, sample_num, induce_num, batch_size)
-        test_consts = (test_num, class_num, test_sample_num, induce_num)
-        test_nll_acc = svtp.test_nll_acc
-    else:
-        raise ValueError("Unsupported method '{}'".format(method))
+    if const:
+        if (invgamma or burr12) and (-1e-10 <= last_W_std - 1. <= 1e-10):
+            mean_test_const, cov_test_const = mean_test, cov_test
+        else:
+            kernel_fn_const = get_kernel_fn(num_hiddens, class_num,
+                                            W_std=W_std, b_std=b_std,
+                                            last_W_std=last_W_std, act=activation)
+            predict_fn_const = gradient_descent_mse_ensemble(kernel_fn_const, x_train, y_train, diag_reg=eps)
+            mean_test_const, cov_test_const = predict_fn_const(x_test=x_test, get="nngp", compute_cov=True)
+        
+        if not invgamma or not burr12:
+            predict_label = argmax(mean_test, axis=1)
+            true_label = argmax(y_test, axis=1)
+            acc = mean(predict_label == true_label)
 
-    if optimizer == "adam":
-        opt_init, opt_update, get_params = optimizers.adam(learning_rate)
-    elif optimizer == "sgd":
-        opt_init, opt_update, get_params = optimizers.sgd(learning_rate)
-    else:
-        raise ValueError("Unsupported optimizer '{}'".format(optimizer))
+        std_diag_test_const = sqrt(diag(cov_test_const))
 
-    train_params, negative_elbo_jit, grad_elbo_jit = train_vars
-    opt_state = opt_init(train_params)
+        nll_test_const = mean(array([
+            gaussian_nll(y, nngp_mean, nngp_std)
+            for y, nngp_mean, nngp_std
+            in zip(y_test, mean_test_const, std_diag_test_const)
+        ]))
 
-    # Training
-    train_batches = TrainBatch(x_train, y_train, batch_size, steps, seed)
+        utils.print_yaml(type="const", **base_args,
+                         **{"last-layer-var": last_layer_variance,
+                            "test-nll": round(float(nll_test_const), 6),
+                            "accuracy": round(float(acc), 6)})
 
-    for i, (x_batch, y_batch) in tqdm(enumerate(train_batches), total=steps):
-        key, split_key = random.split(key)
-        train_params = get_params(opt_state)
+    if invgamma:
+        inv_cov_train = inv(cov_train + eps * eye(train_num))
+        d_1_raw = sum(diag(matmul3(y_train.T, inv_cov_train, y_train)))
 
-        grads = grad_elbo_jit(x_batch, y_batch,
-                                kernel_fn, kernel_scale,
-                                *train_params,
-                                *train_consts, split_key)
+        for alpha in alpha_set:
+            for beta in beta_set:
+                nu = 2 * alpha
+                cond_nu = nu + train_num * class_num
+                d_1 = nu + alpha / beta * d_1_raw
 
-        opt_state = opt_update(i, grads, opt_state)
+                std_test = sqrt(diag(d_1 / cond_nu * beta / alpha * cov_test))
 
-        if i % print_interval == 0:
-            train_params = get_params(opt_state)
-            n_elbo = negative_elbo_jit(x_batch, y_batch,
-                                        kernel_fn, kernel_scale,
-                                        *train_params,
-                                        *train_consts, split_key)
+                nll_test_invgamma = mean(array([
+                    student_t_nll(y, cond_nu, nngp_mean, std)
+                    for y, nngp_mean, std
+                    in zip(y_test, mean_test, std_test)
+                ]))
 
-            elbo_print = "{} / {}: nELBO = {:.6f}".format(i, len(train_batches), n_elbo)
-            tqdm.write(elbo_print)
+                utils.print_yaml(type="invgamma", **base_args,
+                                **{"alpha": alpha, "beta": beta,
+                                   "test-nll": round(float(nll_test_invgamma), 6),
+                                   "accuracy": round(float(acc), 6)})
 
-            if log_dir is not None:
-                log_file.write(elbo_print + "\n")
-                log_file.flush()
+    if burr12:
+        minus_log_two_pi = -(train_num * class_num / 2) * log(2 * np.pi)
+        minus_y_train_K_NNGP_y_train = -(1 / 2) * trace(matmul3(y_train.T, inv(cov_train + 1e-4 * eye(train_num)), y_train))
+        
+        pdf_cov = cov_train + 1e-4 * eye(train_num)
+        nlogpdf = sum(array([
+            stats.multivariate_normal.logpdf(y_train_c.reshape(train_num), None, pdf_cov, allow_singular=True)
+            for y_train_c in y_train.T
+        ]))
+        minus_log_det_K_NNGP = nlogpdf - minus_log_two_pi - minus_y_train_K_NNGP_y_train
 
-        if i % test_interval == 0:
+        std_diag_test = sqrt(diag(cov_test))
 
-            test_nll, test_acc = test_nll_acc(x_test, y_test, kernel_fn, kernel_scale,
-                                              *train_params, *test_consts, key)
+        for burr_c in burr_c_set:
+            for burr_d in burr_d_set:
+                sample_q = stats.burr12.rvs(c=burr_c, d=burr_d, loc=0., scale=1., size=sample_num, random_state=101)
+                minus_log_sigma = -(1 / 2) * train_num * class_num * log(sample_q)
 
-            nll_acc_print = "{} / {}: test_nll = {:.6f}, test_acc = {:.4f}".format(i, len(train_batches), test_nll, test_acc)
-            tqdm.write(nll_acc_print)
+                log_prob_data = minus_log_two_pi + minus_log_det_K_NNGP + minus_y_train_K_NNGP_y_train / sample_q + minus_log_sigma
+                prob_data = exp(log_prob_data - log_prob_data.max()).reshape(-1, 1)
 
-            if log_dir is not None:
-                log_file.write(nll_acc_print + "\n")
-                log_file.flush()
+                prob_prior = stats.burr12.pdf(sample_q, c=burr_c, d=burr_d, loc=0., scale=1.).reshape(-1, 1)
+                prob_q = stats.burr12.pdf(sample_q, c=burr_c, d=burr_d, loc=0., scale=1.).reshape(-1, 1)
 
-    log_file.close()
+                prob_joint = prob_data * prob_prior
+                w = prob_joint / prob_q
+                w_bar = w / sum(w)
+
+                std_test = sqrt(sample_q[:, None]) * std_diag_test[None, :]
+
+                nll_test_burr12 = 0
+                for i, test_y_i in enumerate(y_test):
+                    nll_test_burr12 += mc_nll(test_y_i, mean_test[i], std_test[:, i], w_bar)
+                nll_test_burr12 /= test_num * class_num
+
+                utils.print_yaml(type="invgamma", **base_args,
+                                 **{"burr_c": burr_c, "burr_d": burr_d,
+                                    "test-nll": round(float(nll_test_burr12), 6),
+                                    "accuracy": round(float(acc), 6)})

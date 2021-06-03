@@ -25,7 +25,7 @@ def main(raw_args):
     parser = argparse.ArgumentParser(description="NNGP Experiments")
     subparsers = parser.add_subparsers(dest="command", metavar="command", required=True)
 
-    experiments.add_subparser(subparsers, increase_depth=False)
+    experiments.add_subparser(subparsers)
 
     args = parser.parse_args(raw_args)
     args.func(**vars(args))

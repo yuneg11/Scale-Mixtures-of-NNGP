@@ -25,11 +25,11 @@ def add_subparser(subparsers):
     parser.add_argument("-wv", "--w-variance", default=1., type=float)
     parser.add_argument("-bv", "--b-variance", default=0., type=float)
     parser.add_argument("-act", "--activation", default="relu", choices=["erf", "relu"])
+    parser.add_argument("-e", "--epsilon-log-variance", default=8., type=float)
+    parser.add_argument("-s", "--seed", default=10, type=int)
+    parser.add_argument("-lv", "--last-layer-variance", default=1., type=float)
     parser.add_argument("-a", "--alpha", default=2., type=float)
     parser.add_argument("-b", "--beta", default=2., type=float)
-    parser.add_argument("-e", "--epsilon-log-variance", default=8., type=float)
-    parser.add_argument("-lv", "--last-layer-variance", default=1., type=float)
-    parser.add_argument("-s", "--seed", default=10, type=int)
 
 
 def gaussian_nll(y_test, mean, std):

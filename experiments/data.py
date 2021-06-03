@@ -211,7 +211,7 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
         
     elif name == "syn_t":
         num = 100
-        rs = np.random.RandomState(777)
+        rs = np.random.RandomState(761)
 
         x = np.linspace(-num / 2, num / 2, num)[:, None]
         cov = np.exp(-0.5 * (x - x.T) ** 2)
