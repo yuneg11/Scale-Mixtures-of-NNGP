@@ -2,6 +2,8 @@ pandas
 xlrd
 openpyxl
 tqdm
+matplotlib
+seaborn
 scipy
 scikit-learn
 tensorflow
