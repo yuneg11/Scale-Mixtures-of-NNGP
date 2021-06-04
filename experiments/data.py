@@ -14,7 +14,7 @@ from sklearn.datasets import load_boston
 regression_datasets = [
     "boston", "concrete", "energy", "kin8nm", "naval",
     "plant", "wine-red", "wine-white", "yacht", "sic97",
-    "syn-normal", "syn-t", "airfoil", "parkinsons", "forest",
+    "syn-normal", "syn-t", "airfoil", "parkinsons", "forest", "fish",
 ]
 
 classification_datasets = [
@@ -64,6 +64,9 @@ dataset_urls = {
     "forest": {
         "forestfires.csv": "https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.csv",
         "forestfires.names": "https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.names",
+    },
+    "fish": {
+        "qsar_fish_toxicity.csv": "https://archive.ics.uci.edu/ml/machine-learning-databases/00504/qsar_fish_toxicity.csv",
     },
     "sic97": {
         "sic97data_01.zip": "https://wiki.52north.org/pub/AI_GEOSTATS/AI_GEOSTATSData/sic97data_01.zip",
@@ -230,6 +233,16 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
         data = txt_data.to_numpy()
 
         x, y = data[:, :7], data[:, 7]
+
+    elif name == "fish":  # QSAR fish toxicity
+        # https://archive.ics.uci.edu/ml/datasets/QSAR+fish+toxicity
+        _download_dataset(name, root)
+
+        filepath = os.path.join(root, "fish/qsar_fish_toxicity.csv")
+        txt_data = pd.read_csv(filepath, delimiter=";", header=None)
+        data = txt_data.to_numpy()
+
+        x, y = data[:, :6], data[:, 6]
 
     elif name == "sic97":  # Switzerland Rainfall
         # https://wiki.52north.org/AI_GEOSTATS/AI_GEOSTATSData
