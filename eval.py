@@ -6,7 +6,7 @@ warnings.filterwarnings("ignore")
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-parser = argparse.ArgumentParser(description="NNGP Experiments")
+parser = argparse.ArgumentParser(description="Scale Mixtures of NNGP", add_help=False)
 parser.add_argument("-g", "--gpu", type=int)
 parser.add_argument("-f", "--fraction", type=float)
 args, main_args = parser.parse_known_args()
@@ -22,7 +22,7 @@ import experiments
 
 
 def main(raw_args):
-    parser = argparse.ArgumentParser(description="NNGP Experiments")
+    parser = argparse.ArgumentParser(description="Scale Mixtures of NNGP")
     subparsers = parser.add_subparsers(dest="command", metavar="command", required=True)
 
     experiments.add_subparser(subparsers)
