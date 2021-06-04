@@ -1,0 +1,13 @@
+pandas
+xlrd
+openpyxl
+tqdm
+scipy
+scikit-learn
+tensorflow
+tensorflow-datasets
+neural-tangents
+
+--find-links https://storage.googleapis.com/jax-releases/jax_releases.html
+jax
+jaxlib==0.1.67+cuda102

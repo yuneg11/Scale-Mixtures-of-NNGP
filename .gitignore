@@ -1,6 +1,4 @@
 data
 *.sh
 *.txt
-*.bak*
-test*
 *.npy
