@@ -12,19 +12,19 @@ from sklearn.datasets import load_boston
 
 
 regression_datasets = [
-    "boston", "concrete", "energy", "kin8nm", "naval",
-    "plant", "wine-red", "wine-white", "yacht", "sic97",
-    "syn-normal", "syn-t", "airfoil", "parkinsons", "forest", "fish",
+    "boston", "concrete", "energy", "kin8nm", "naval", "plant",
+    "wine-red", "wine-white", "yacht", "airfoil", "sic97",
+    "syn-normal", "syn-t",
 ]
 
 classification_datasets = [
-    "mnist", "cifar10", "cifar100", "svhn_cropped",
-    "emnist", "fashion_mnist", "kmnist",
+    "mnist", "emnist", "fashion_mnist", "kmnist",
     "mnist_corrupted/shot_noise",
     "mnist_corrupted/impulse_noise",
     "mnist_corrupted/spatter",
     "mnist_corrupted/glass_blur",
     "mnist_corrupted/zigzag",
+    "svhn_cropped",
 ]
 
 datasets = regression_datasets + classification_datasets
@@ -89,11 +89,11 @@ def _download_url(url, filepath):
     try:
         print("Download {} to {}".format(url, filepath))
         _urlretrieve(url, filepath)
-    except (urllib.error.URLError, IOError) as e:  # type: ignore[attr-defined]
-        if url[:5] == 'https':
-            url = url.replace('https:', 'http:')
-            print('Failed download. Trying https -> http instead.'
-                  ' Downloading ' + url + ' to ' + filepath)
+    except (urllib.error.URLError, IOError) as e:
+        if url[:5] == "https":
+            url = url.replace("https:", "http:")
+            print("Failed download. Trying https -> http instead."
+                  " Downloading " + url + " to " + filepath)
             _urlretrieve(url, filepath)
         else:
             raise e
@@ -101,9 +101,8 @@ def _download_url(url, filepath):
 
 def _extract_zip(filepath):
     to_path = os.path.dirname(filepath)
-    with zipfile.ZipFile(filepath, 'r') as z:
+    with zipfile.ZipFile(filepath, "r") as z:
         z.extractall(to_path)
-    # os.remove(filepath)  # Remove ZIP file after extraction
 
 
 def _download_dataset(name, root):
@@ -214,36 +213,6 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
 
         x, y = data[:, :5], data[:, 5]
 
-    elif name == "parkinsons":  # Parkinsons Telemonitoring
-        # https://archive.ics.uci.edu/ml/datasets/Parkinsons+Telemonitoring
-        _download_dataset(name, root)
-
-        filepath = os.path.join(root, "parkinsons/parkinsons_updrs.data")
-        txt_data = pd.read_table(filepath, delimiter=",")
-        data = txt_data.to_numpy()
-
-        x, y = data[:, 6:], data[:, 5]
-
-    elif name == "forest":  # Forest Fires
-        # https://archive.ics.uci.edu/ml/datasets/Forest+Fires
-        _download_dataset(name, root)
-
-        filepath = os.path.join(root, "forest/forestfires.csv")
-        txt_data = pd.read_csv(filepath).iloc[:, 4:13]
-        data = txt_data.to_numpy()
-
-        x, y = data[:, :7], data[:, 7]
-
-    elif name == "fish":  # QSAR fish toxicity
-        # https://archive.ics.uci.edu/ml/datasets/QSAR+fish+toxicity
-        _download_dataset(name, root)
-
-        filepath = os.path.join(root, "fish/qsar_fish_toxicity.csv")
-        txt_data = pd.read_csv(filepath, delimiter=";", header=None)
-        data = txt_data.to_numpy()
-
-        x, y = data[:, :6], data[:, 6]
-
     elif name == "sic97":  # Switzerland Rainfall
         # https://wiki.52north.org/AI_GEOSTATS/AI_GEOSTATSData
         _download_dataset(name, root)
@@ -282,11 +251,7 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
     return x, y
 
 
-def split_dataset(
-    x, y,
-    train, valid, test,
-    normalize_x=True, normalize_y=True
-):
+def split_dataset(x, y, train, valid, test, normalize_x=True, normalize_y=True):
     fractions = train + valid + test
 
     if not math.isclose(fractions, 1.0) and fractions > 1.0:
@@ -340,9 +305,8 @@ def permute_dataset(x, y, seed=0):
     return permuted_x, permuted_y
 
 
-def _one_hot(x, k, dtype=np.float32):
-  """Create a one-hot encoding of x of size k."""
-  return np.array(x[:, None] == np.arange(k), dtype)
+def _one_hot(x, k):
+  return np.array(x[:, None] == np.arange(k), np.float32)
 
 
 def get_classification_dataset(
@@ -353,20 +317,18 @@ def get_classification_dataset(
     ds_builder = tfds.builder(name)
 
     if name in [
-        "mnist", "cifar10", "cifar100", "svhn_cropped",
-        "emnist", "fashion_mnist", "kmnist",
+        "mnist", "emnist", "fashion_mnist", "kmnist",
         "mnist_corrupted/shot_noise",
         "mnist_corrupted/impulse_noise",
         "mnist_corrupted/spatter",
         "mnist_corrupted/glass_blur",
         "mnist_corrupted/zigzag",
+        "svhn_cropped",
     ]:
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
                 name,
                 split=["train", "test"],
-                # split=["train" + ("[:%d]" % train_num if train_num is not None else ""),
-                #        "test"  + ("[:%d]" % test_num if test_num is not None else "")],
                 batch_size=-1,
                 as_dataset_kwargs={"shuffle_files": False},
                 data_dir=root,

@@ -5,9 +5,24 @@
 ```bash
 pip install -r requirements.txt
 ```
-## Evaluation
 
-### Regression
+## Regression
+
+### Available datasets
+
+- boston
+- concrete
+- energy
+- kin8nm
+- naval
+- plant
+- wine-red
+- wine-white
+- yacht
+- airfoil
+- sic97
+- syn-normal
+- syn-t
 
 #### Usage
 
@@ -35,7 +50,7 @@ python eval.py reg <dataset> \
               [-bd <burr_d (number or list)>]
 ```
 
-#### Example
+### Example
 
 ```bash
 python eval.py reg boston \
@@ -57,9 +72,27 @@ python eval.py reg boston \
               -bd "range(1, 4)"
 ```
 
-### Classification
+### Results
 
-#### Usage
+![Figure1](fig/1.png)
+![Figure2](fig/2.png)
+
+## Classification
+
+### Available datasets
+
+- mnist
+- mnist_corrupted/shot_noise
+- mnist_corrupted/impulse_noise
+- mnist_corrupted/spatte
+- mnist_corrupted/glass_blur
+- mnist_corrupted/zigzag
+- emnist
+- kmnist
+- fashion_mnist
+- svhn_cropped
+
+### Usage
 
 ```bash
 python eval.py cls -h
@@ -85,7 +118,7 @@ python eval.py cls <dataset> [<test-dataset>] \
               ]-bd <burr_d (number or list)>]
 ```
 
-#### Example
+### Example
 
 ```bash
 python eval.py cls mnist mnist_corrupted/shot_noise \
@@ -107,8 +140,6 @@ python eval.py cls mnist mnist_corrupted/shot_noise \
               -bd 2.
 ```
 
-## Results
+### Results
 
-### Regression
-
-### Classification
+![Figure3](fig/3.png)
