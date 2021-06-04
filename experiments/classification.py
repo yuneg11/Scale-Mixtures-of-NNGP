@@ -141,7 +141,7 @@ def main(dataset, test_dataset, train_num, test_num,
             mean_test_const, cov_test_const = predict_fn_const(x_test=x_test, get="nngp", compute_cov=True)
         
         if not invgamma or not burr12:
-            predict_label = argmax(mean_test, axis=1)
+            predict_label = argmax(mean_test_const, axis=1)
             true_label = argmax(y_test, axis=1)
             acc = mean(predict_label == true_label)
 
