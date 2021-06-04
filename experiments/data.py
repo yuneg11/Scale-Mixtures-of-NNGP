@@ -14,16 +14,16 @@ from sklearn.datasets import load_boston
 regression_datasets = [
     "boston", "concrete", "energy", "kin8nm", "naval",
     "plant", "wine-red", "wine-white", "yacht", "sic97",
-    "syn_normal", "syn_t",
+    "syn-normal", "syn-t", "airfoil", "parkinsons",
 ]
 
 classification_datasets = [
     "mnist", "cifar10", "cifar100", "svhn_cropped",
-    "emnist", "fashion_mnist",
+    "emnist", "fashion_mnist", "kmnist",
     "mnist_corrupted/shot_noise",
     "mnist_corrupted/impulse_noise",
-    "mnist_corrupted/fog",
     "mnist_corrupted/spatter",
+    "mnist_corrupted/glass_blur",
 ]
 
 datasets = regression_datasets + classification_datasets
@@ -53,7 +53,14 @@ dataset_urls = {
     "yacht": {
         "yacht_hydrodynamics.data": "http://archive.ics.uci.edu/ml/machine-learning-databases/00243/yacht_hydrodynamics.data",
     },
-    "rainfall": {
+    "airfoil": {
+        "airfoil_self_noise.dat": "https://archive.ics.uci.edu/ml/machine-learning-databases/00291/airfoil_self_noise.dat",
+    },
+    "parkinsons": {
+        "parkinsons_updrs.data": "https://archive.ics.uci.edu/ml/machine-learning-databases/parkinsons/telemonitoring/parkinsons_updrs.data",
+        "parkinsons_updrs.names": "https://archive.ics.uci.edu/ml/machine-learning-databases/parkinsons/telemonitoring/parkinsons_updrs.names",
+    },
+    "sic97": {
         "sic97data_01.zip": "https://wiki.52north.org/pub/AI_GEOSTATS/AI_GEOSTATSData/sic97data_01.zip",
     },
 }
@@ -189,6 +196,26 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
 
         x, y = data[:, :6], data[:, 6]
 
+    elif name == "airfoil":  # Airfoil Self-Noise
+        # https://archive.ics.uci.edu/ml/datasets/Airfoil+Self-Noise
+        _download_dataset(name, root)
+
+        filepath = os.path.join(root, "airfoil/airfoil_self_noise.dat")
+        txt_data = pd.read_table(filepath, delim_whitespace="\t", header=None)
+        data = txt_data.to_numpy()
+
+        x, y = data[:, :5], data[:, 5]
+
+    elif name == "parkinsons":  # Parkinsons Telemonitoring
+        # https://archive.ics.uci.edu/ml/datasets/Parkinsons+Telemonitoring
+        _download_dataset(name, root)
+
+        filepath = os.path.join(root, "parkinsons/parkinsons_updrs.data")
+        txt_data = pd.read_table(filepath, delimiter=",")
+        data = txt_data.to_numpy()
+
+        x, y = data[:, 6:], data[:, 5]
+
     elif name == "sic97":  # Switzerland Rainfall
         # https://wiki.52north.org/AI_GEOSTATS/AI_GEOSTATSData
         _download_dataset(name, root)
@@ -199,7 +226,7 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
 
         x, y = data[:, :2], data[:, 2]
 
-    elif name == "syn_normal":
+    elif name == "syn-normal":
         num = 100
         rs = np.random.RandomState(829)
 
@@ -209,14 +236,14 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
         y = rs.multivariate_normal(mean=np.zeros(num), cov=cov, size=1).flatten() \
           + rs.standard_normal(size=num) * 0.2
         
-    elif name == "syn_t":
-        num = 100
+    elif name == "syn-t":
+        num = 300
         rs = np.random.RandomState(761)
 
         x = np.linspace(-num / 2, num / 2, num)[:, None]
         cov = np.exp(-0.5 * (x - x.T) ** 2)
         y = rs.multivariate_normal(mean=np.zeros(num), cov=cov, size=1).flatten() \
-          + rs.standard_t(df=1, size=num) * 0.2
+          + rs.standard_t(df=1, size=num) * 0.8
 
     else:
         raise KeyError("Unsupported dataset '{}'".format(name))
@@ -299,11 +326,11 @@ def get_classification_dataset(
 
     if name in [
         "mnist", "cifar10", "cifar100", "svhn_cropped",
-        "emnist", "fashion_mnist",
+        "emnist", "fashion_mnist", "kmnist",
         "mnist_corrupted/shot_noise",
         "mnist_corrupted/impulse_noise",
-        "mnist_corrupted/fog",
         "mnist_corrupted/spatter",
+        "mnist_corrupted/glass_blur",
     ]:
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
