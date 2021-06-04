@@ -14,7 +14,7 @@ from sklearn.datasets import load_boston
 regression_datasets = [
     "boston", "concrete", "energy", "kin8nm", "naval",
     "plant", "wine-red", "wine-white", "yacht", "sic97",
-    "syn-normal", "syn-t", "airfoil", "parkinsons",
+    "syn-normal", "syn-t", "airfoil", "parkinsons", "forest",
 ]
 
 classification_datasets = [
@@ -24,6 +24,7 @@ classification_datasets = [
     "mnist_corrupted/impulse_noise",
     "mnist_corrupted/spatter",
     "mnist_corrupted/glass_blur",
+    "mnist_corrupted/zigzag",
 ]
 
 datasets = regression_datasets + classification_datasets
@@ -59,6 +60,10 @@ dataset_urls = {
     "parkinsons": {
         "parkinsons_updrs.data": "https://archive.ics.uci.edu/ml/machine-learning-databases/parkinsons/telemonitoring/parkinsons_updrs.data",
         "parkinsons_updrs.names": "https://archive.ics.uci.edu/ml/machine-learning-databases/parkinsons/telemonitoring/parkinsons_updrs.names",
+    },
+    "forest": {
+        "forestfires.csv": "https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.csv",
+        "forestfires.names": "https://archive.ics.uci.edu/ml/machine-learning-databases/forest-fires/forestfires.names",
     },
     "sic97": {
         "sic97data_01.zip": "https://wiki.52north.org/pub/AI_GEOSTATS/AI_GEOSTATSData/sic97data_01.zip",
@@ -216,6 +221,16 @@ def get_regression_dataset(name, root="./data", y_newaxis=True):
 
         x, y = data[:, 6:], data[:, 5]
 
+    elif name == "forest":  # Forest Fires
+        # https://archive.ics.uci.edu/ml/datasets/Forest+Fires
+        _download_dataset(name, root)
+
+        filepath = os.path.join(root, "forest/forestfires.csv")
+        txt_data = pd.read_csv(filepath).iloc[:, 4:13]
+        data = txt_data.to_numpy()
+
+        x, y = data[:, :7], data[:, 7]
+
     elif name == "sic97":  # Switzerland Rainfall
         # https://wiki.52north.org/AI_GEOSTATS/AI_GEOSTATSData
         _download_dataset(name, root)
@@ -331,6 +346,7 @@ def get_classification_dataset(
         "mnist_corrupted/impulse_noise",
         "mnist_corrupted/spatter",
         "mnist_corrupted/glass_blur",
+        "mnist_corrupted/zigzag",
     ]:
         ds_train, ds_test = tfds.as_numpy(
             tfds.load(
