@@ -147,7 +147,7 @@ python eval.py cls <dataset> [<test-dataset>] \
               [-b <beta (number or list)>] \
               # Burr Type XII options
               [-bc <burr_c (number or list)>] \
-              ]-bd <burr_d (number or list)>]
+              [-bd <burr_d (number or list)>]
 ```
 
 ### Example

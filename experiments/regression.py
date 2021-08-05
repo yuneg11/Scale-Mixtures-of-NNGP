@@ -25,13 +25,33 @@ def add_subparser(subparsers):
     parser.add_argument("-s", "--seed", default=10, type=int)
 
     parser.add_argument("-lv", "--last-layer-variance")
-    
+
     parser.add_argument("-a", "--alpha")
     parser.add_argument("-b", "--beta")
 
     parser.add_argument("-bc", "--burr-c")
     parser.add_argument("-bd", "--burr-d")
     parser.add_argument("-sn", "--sample-num", default=1000, type=int)
+
+
+# def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
+#     if act == "relu":
+#         act_class = stax.Relu
+#     elif act == "erf":
+#         act_class = stax.Erf
+#     else:
+#         raise KeyError("Unsupported act '{}'".format(act))
+
+#     layers = []
+#     for _ in range(depth):
+#         layers.append(stax.Dense(8192, W_std=W_std, b_std=b_std))
+#         layers.append(act_class())
+
+#     layers.append(stax.Dense(1, W_std=last_W_std))
+
+#     init_fn, apply_fn, kernel_fn = stax.serial(*layers)
+#     kernel_fn = jit(kernel_fn, static_argnums=(2,))
+#     return kernel_fn
 
 
 def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
@@ -42,15 +62,23 @@ def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
     else:
         raise KeyError("Unsupported act '{}'".format(act))
 
-    layers = []
-    for _ in range(depth):
-        layers.append(stax.Dense(8192, W_std=W_std, b_std=b_std))
-        layers.append(act_class())
+    ResBlock = stax.serial(
+        stax.FanOut(2),
+        stax.parallel(
+            stax.serial(
+                act_class(),
+                stax.Dense(512, W_std=W_std, b_std=b_std),
+            ),
+            stax.Identity()
+        ),
+        stax.FanInSum()
+    )
 
-    layers.append(stax.Dense(1, W_std=last_W_std))
+    layers = [stax.Dense(512, W_std=W_std, b_std=b_std)]
+    layers += [ResBlock for _ in range(depth)]
+    layers += [act_class(), stax.Dense(1, W_std=last_W_std, b_std=0)]
 
     init_fn, apply_fn, kernel_fn = stax.serial(*layers)
-    kernel_fn = jit(kernel_fn, static_argnums=(2,))
     return kernel_fn
 
 
@@ -72,8 +100,8 @@ def mc_nll(y_test, mean, std, w_bar):
 
 
 def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_d, alpha, beta,
-         epsilon_log_variance, seed, sample_num, last_layer_variance, **kwargs):    
-    
+         epsilon_log_variance, seed, sample_num, last_layer_variance, **kwargs):
+
     # Argument process
 
     base_args = {
@@ -159,7 +187,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
 
                 inv_cov_train = inv(beta / alpha * cov_train + eps * eye(train_num))
                 d_1 = nu + matmul3(y_train.T, inv_cov_train, y_train).flatten()
-                
+
                 std_valid = sqrt(diag(d_1 / cond_nu * beta / alpha * cov_valid))
                 std_test = sqrt(diag(d_1 / cond_nu * beta / alpha * cov_test))
 
