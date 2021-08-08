@@ -17,6 +17,7 @@ def add_subparser(subparsers):
     parser.set_defaults(func=main)
 
     parser.add_argument("dataset", choices=data.regression_datasets)
+    parser.add_argument("-m", "--model", default="mlp", choices=["mlp", "resnet"])
     parser.add_argument("-nh", "--num-hiddens", default=1, type=int)
     parser.add_argument("-wv", "--w-variance", default=1., type=float)
     parser.add_argument("-bv", "--b-variance", default=0., type=float)
@@ -34,27 +35,27 @@ def add_subparser(subparsers):
     parser.add_argument("-sn", "--sample-num", default=1000, type=int)
 
 
-# def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
-#     if act == "relu":
-#         act_class = stax.Relu
-#     elif act == "erf":
-#         act_class = stax.Erf
-#     else:
-#         raise KeyError("Unsupported act '{}'".format(act))
+def get_mlp_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
+    if act == "relu":
+        act_class = stax.Relu
+    elif act == "erf":
+        act_class = stax.Erf
+    else:
+        raise KeyError("Unsupported act '{}'".format(act))
 
-#     layers = []
-#     for _ in range(depth):
-#         layers.append(stax.Dense(8192, W_std=W_std, b_std=b_std))
-#         layers.append(act_class())
+    layers = []
+    for _ in range(depth):
+        layers.append(stax.Dense(8192, W_std=W_std, b_std=b_std))
+        layers.append(act_class())
 
-#     layers.append(stax.Dense(1, W_std=last_W_std))
+    layers.append(stax.Dense(1, W_std=last_W_std))
 
-#     init_fn, apply_fn, kernel_fn = stax.serial(*layers)
-#     kernel_fn = jit(kernel_fn, static_argnums=(2,))
-#     return kernel_fn
+    init_fn, apply_fn, kernel_fn = stax.serial(*layers)
+    kernel_fn = jit(kernel_fn, static_argnums=(2,))
+    return kernel_fn
 
 
-def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
+def get_resnet_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
     if act == "relu":
         act_class = stax.Relu
     elif act == "erf":
@@ -79,6 +80,7 @@ def get_kernel_fn(depth, W_std, b_std, last_W_std=1., act="erf"):
     layers += [act_class(), stax.Dense(1, W_std=last_W_std, b_std=0)]
 
     init_fn, apply_fn, kernel_fn = stax.serial(*layers)
+    kernel_fn = jit(kernel_fn, static_argnums=(2,))
     return kernel_fn
 
 
@@ -100,7 +102,7 @@ def mc_nll(y_test, mean, std, w_bar):
 
 
 def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_d, alpha, beta,
-         epsilon_log_variance, seed, sample_num, last_layer_variance, **kwargs):
+         epsilon_log_variance, seed, sample_num, last_layer_variance, model, **kwargs):
 
     # Argument process
 
@@ -128,6 +130,13 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
     if not const and not invgamma and not burr12:
         print("No distribution is selected.")
         exit(-1)
+
+    if model == "mlp":
+        get_kernel_fn = get_mlp_kernel_fn
+    elif model == "resnet":
+        get_kernel_fn = get_resnet_kernel_fn
+    else:
+        raise KeyError("Unsupported model '{}'".format(model))
 
     # Dataset
 
@@ -201,9 +210,9 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
 
     if burr12:
         minus_log_two_pi = -(train_num / 2) * log(2 * np.pi)
-        minus_y_train_K_NNGP_y_train = -(1 / 2) * matmul3(y_train.T, inv(cov_train + 1e-4 * eye(train_num)), y_train)
+        minus_y_train_K_NNGP_y_train = -(1 / 2) * matmul3(y_train.T, inv(cov_train + eps * eye(train_num)), y_train)
         normal_x = y_train.reshape(train_num)
-        normal_cov = cov_train + 1e-4 * eye(train_num)
+        normal_cov = cov_train + eps * eye(train_num)
         minus_log_det_K_NNGP = stats.multivariate_normal.logpdf(normal_x, None, normal_cov, allow_singular=True) \
                              - minus_log_two_pi - minus_y_train_K_NNGP_y_train
 

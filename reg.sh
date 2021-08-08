@@ -1,6 +1,7 @@
 data=$1
 gpu=$2
-seed=10
+model=$3
+seed=-1
 
 for nh in 1 4 16; do
     for wv in 1 2 4; do
@@ -22,6 +23,7 @@ for nh in 1 4 16; do
                                 -e $e \
                                 -g $gpu \
                                 -f 1.0 \
+                                -m $model \
                                 -s $seed
                     done
                 done
