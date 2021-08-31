@@ -23,8 +23,8 @@ def sample_f_b(invgamma_a, invgamma_b, sample_num, batch_num, class_num, key):
     covariance = eye(batch_num * class_num)
     sampled_f = random.multivariate_normal(key_normal, mean, covariance, shape=(sample_num,))
 
-    gamma_pure = random.gamma(key_gamma, a=invgamma_a)
-    gamma_rho = gamma_pure / invgamma_b
+    gamma_pure = random.gamma(key_gamma, a=softplus(invgamma_a))
+    gamma_rho = gamma_pure / softplus(invgamma_b)
     invgamma = 1 / gamma_rho  # invgamma ~ invgamma(a = nu_q/2, scale = rho_q/2)
     sigma = sqrt(invgamma)
     sampled_f = sampled_f * sigma
@@ -45,14 +45,14 @@ def kl_divergence(
     inducing_mu_t = inducing_mu[None, ...]
     inducing_mu_vec = inducing_mu[..., None]
 
-    kl = 1 / 2 * (invgamma_a / invgamma_b * matmul3(inducing_mu_t, k_i_i_inverse, inducing_mu_vec) \
+    kl = 1 / 2 * (softplus(invgamma_a) / softplus(invgamma_b) * matmul3(inducing_mu_t, k_i_i_inverse, inducing_mu_vec) \
                   + trace(matmul(k_i_i_inverse, inducing_sigma_mat)) \
                   + (logdet(k_i_i) - logdet(inducing_sigma_mat)) \
                   - (induce_num * class_num)) \
-       + alpha * log(invgamma_b / beta) \
-       - gammaln(invgamma_a) + gammaln(alpha) \
-       + (invgamma_a - alpha) * digamma(invgamma_a) \
-       + (beta - invgamma_b) * invgamma_a / invgamma_b
+       + alpha * log(softplus(invgamma_b) / beta) \
+       - gammaln(softplus(invgamma_a)) + gammaln(alpha) \
+       + (softplus(invgamma_a) - alpha) * digamma(softplus(invgamma_a)) \
+       + (beta - softplus(invgamma_b)) * softplus(invgamma_a) / softplus(invgamma_b)
 
     return sum(kl)  # convert to scalar
 
@@ -65,7 +65,7 @@ def negative_elbo(
     train_num, class_num, sample_num, induce_num, batch_num,
     key,
 ):
-    inducing_sigma_mat = inducing_sigma_mat = diag(softplus(inducing_sigma))
+    inducing_sigma_mat = diag(softplus(inducing_sigma))
 
     mean, covariance_L = mean_covariance(x_batch, inducing_points, kernel_fn,
                                          inducing_mu, inducing_sigma_mat,
@@ -92,7 +92,7 @@ def test_nll_acc(
     test_num, class_num, test_sample_num, induce_num,
     key,
 ):
-    inducing_sigma_mat = inducing_sigma_mat = diag(softplus(inducing_sigma))
+    inducing_sigma_mat = diag(softplus(inducing_sigma))
 
     test_nll_list = []
     total_correct_count = 0
@@ -134,7 +134,7 @@ def test_nll_acc(
             random_state=key_test[1],
             loc=test_mean,
             shape=test_sigma,
-            df=2 * invgamma_a,
+            df=2 * softplus(invgamma_a),
             size=(test_sample_num,),
         ).reshape(test_sample_num, class_num, batch_num)
         test_f_sample = transpose(test_f_sample, axes=(0, 2, 1))

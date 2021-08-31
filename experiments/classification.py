@@ -113,8 +113,8 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
         test_consts = (test_num, class_num, test_sample_num, induce_num)
         test_nll_acc = svgp.test_nll_acc
     elif method == "svtp":
-        invgamma_a = alpha
-        invgamma_b = beta
+        invgamma_a = softplus_inv(alpha + 1e-6)
+        invgamma_b = softplus_inv(beta + 1e-6)
 
         train_vars = svtp.get_train_vars(inducing_mu, inducing_sigma, inducing_points,
                                          invgamma_a, invgamma_b)
