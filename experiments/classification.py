@@ -13,6 +13,10 @@ from . import svgp
 from . import svtp
 
 
+def softplus_inv(x):
+    return log(exp(x) - 1.)
+
+
 def add_subparser(subparsers):
     from argparse import ArgumentDefaultsHelpFormatter as DefaultsFormatter
 
@@ -25,7 +29,7 @@ def add_subparser(subparsers):
     parser.add_argument("method",                     choices=["svgp", "svtp"])
     parser.add_argument("-d",    "--dataset",         choices=data.classification_datasets)
     parser.add_argument("-log",  "--log-dir",         required=False)
-    parser.add_argument("-trn",  "--train-num",       default=10000, type=int)
+    parser.add_argument("-trn",  "--train-num",       default=5000, type=int)
     parser.add_argument("-tsn",  "--test-num",        default=1000, type=int)
     parser.add_argument("-bs",   "--batch-size",      default=128, type=int)
     parser.add_argument("-in",   "--induce-num",      default=100, type=int)
@@ -46,6 +50,20 @@ def add_subparser(subparsers):
     parser.add_argument("-e",    "--steps",           default=20000, type=int)
     parser.add_argument("-s",    "--seed",            default=10, type=int)
     parser.add_argument("-nn",   "--no-normalize",    default=False, action="store_true")
+    parser.add_argument("-km",   "--kmeans",        default=False, action="store_true")
+
+
+from sklearn.cluster import KMeans
+
+def get_inducing(X, Y, inducing_num, class_num):
+    inducings = []
+    inducing_per_class = inducing_num // class_num
+    for class_idx in range(class_num):
+        xc = X[jnp.argmax(Y, axis=1) == class_idx]
+        xc = xc.reshape(xc.shape[0], -1)
+        kmeans = KMeans(n_clusters=inducing_per_class).fit(xc)
+        inducings.append(kmeans.cluster_centers_.reshape(kmeans.cluster_centers_.shape[0], *X.shape[1:]))
+    return jnp.vstack(inducings)
 
 
 def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, depth, log_dir,
@@ -81,9 +99,13 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     # Init
     key = random.PRNGKey(10)
 
-    inducing_points = x_train[:induce_num]
+    if kwargs["kmeans"]:
+        inducing_points = get_inducing(x_train, y_train, induce_num, class_num)
+    else:
+        inducing_points = x_train[:induce_num]
+
     inducing_mu = jnp.zeros(induce_num * class_num)
-    inducing_sigma = jnp.ones(induce_num * class_num)
+    inducing_sigma = jnp.full(induce_num * class_num, softplus_inv(1e-6))
 
     if method == "svgp":
         train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points)
@@ -115,7 +137,7 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     # Training
     train_batches = TrainBatch(x_train, y_train, batch_size, steps, seed)
 
-    for i, (x_batch, y_batch) in tqdm(enumerate(train_batches), total=steps):
+    for i, (x_batch, y_batch) in tqdm(enumerate(train_batches), total=steps, ncols=0):
         key, split_key = random.split(key)
         train_params = get_params(opt_state)
 
@@ -140,8 +162,7 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
                 log_file.write(elbo_print + "\n")
                 log_file.flush()
 
-        if i % test_interval == 0:
-
+        if i % test_interval == 0 or i == steps - 1:
             test_nll, test_acc = test_nll_acc(x_test, y_test, kernel_fn, kernel_scale,
                                               *train_params, *test_consts, key)
 
@@ -152,4 +173,5 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
                 log_file.write(nll_acc_print + "\n")
                 log_file.flush()
 
-    log_file.close()
+    if log_dir is not None:
+        log_file.close()

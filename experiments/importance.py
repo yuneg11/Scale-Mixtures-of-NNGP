@@ -91,7 +91,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
     b_std = jnp.sqrt(b_variance)
     # last_W_std = jnp.sqrt(last_layer_variance)
 
-    kernel_fn_is = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=1.)
+    kernel_fn_is = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=1., act=activation)
     # kernel_fn_const = get_kernel_fn(num_hiddens, W_std=W_std, b_std=b_std, last_W_std=last_W_std)
 
     # Importance
@@ -107,7 +107,7 @@ def main(dataset, num_hiddens, w_variance, b_variance, activation, burr_c, burr_
 
     minus_log_two_pi = -(train_num / 2) * jnp.log(2 * jnp.pi)
     minus_y_train_K_NNGP_y_train = -(1 / 2) * jnp.matmul(jnp.matmul(train_y.T, linalg.inv(nngp_train_covariance + 1e-4 * jnp.eye(train_num))), train_y)
-    minus_log_det_K_NNGP = stats.multivariate_normal.logpdf(train_y.reshape(train_num), None, nngp_train_covariance + 1e-4 * jnp.eye(train_num)) - minus_log_two_pi - minus_y_train_K_NNGP_y_train
+    minus_log_det_K_NNGP = stats.multivariate_normal.logpdf(train_y.reshape(train_num), None, nngp_train_covariance + 1e-4 * jnp.eye(train_num), allow_singular=True) - minus_log_two_pi - minus_y_train_K_NNGP_y_train
     minus_log_sigma = -(1 / 2) * train_num * jnp.log(sample_q)
 
     log_probability_data = minus_log_two_pi + minus_log_det_K_NNGP + minus_y_train_K_NNGP_y_train / sample_q + minus_log_sigma

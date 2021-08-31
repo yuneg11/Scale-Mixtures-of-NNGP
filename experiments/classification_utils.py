@@ -103,14 +103,14 @@ def mean_covariance(
 
     inducing_x = inducing_points
     inducing_y = zeros((induce_num, class_num))
-    predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-4)
+    predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-6)
     _, B_B = predict_fn(x_test=x_batch, get="nngp", compute_cov=True)
 
     B_B *= kernel_scale
 
     kernel = kernel_fn(batch_induced, batch_induced, "nngp") * kernel_scale
     k_b_b, k_b_i, k_i_b, k_i_i = split_kernel(kernel, batch_num)
-    k_i_i_inverse = inv(k_i_i + 1e-4 * eye(induce_num))
+    k_i_i_inverse = inv(k_i_i + 1e-6 * eye(induce_num))
 
     A_B = matmul(k_b_i, k_i_i_inverse)
     # L = cholesky(k_i_i)

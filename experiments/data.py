@@ -303,8 +303,9 @@ def get_classification_dataset(
     x_train, y_train = permute_dataset(x_train, y_train, seed=seed)
 
     if normalize:
-        x_train = (x_train - np.mean(x_train)) / np.std(x_train)
-        x_test = (x_test - np.mean(x_train)) / np.std(x_train)
+        x_mean, x_std = np.mean(x_train), np.std(x_train)
+        x_train = (x_train - x_mean) / x_std
+        x_test = (x_test - x_mean) / x_std
     else:
         x_train = np.array(x_train).astype(float)
         x_test = np.array(x_test).astype(float)

@@ -9,6 +9,10 @@ from .utils import *
 from .classification_utils import *
 
 
+def softplus(x):
+    return log(1 + exp(x))
+
+
 def sample_f_b(sample_num, batch_num, class_num, key):
     _, key_normal = random.split(key)
 
@@ -25,7 +29,7 @@ def kl_divergence(
 ):
 
     k_i_i = kernel_fn(inducing_points, inducing_points, "nngp") * kernel_scale
-    k_i_i_inverse = inv(k_i_i + 1e-4 * eye(induce_num))
+    k_i_i_inverse = inv(k_i_i + 1e-6 * eye(induce_num))
     k_i_i_inverse = kron_diag(k_i_i_inverse, n=class_num)
 
     inducing_mu_t = inducing_mu[None, ...]
@@ -46,7 +50,7 @@ def negative_elbo(
     train_num, class_num, sample_num, induce_num, batch_num,
     key,
 ):
-    inducing_sigma_mat = diag(inducing_sigma)
+    inducing_sigma_mat = diag(softplus(inducing_sigma))
 
     mean, covariance_L = mean_covariance(x_batch, inducing_points, kernel_fn,
                                          inducing_mu, inducing_sigma_mat,
@@ -70,20 +74,20 @@ def test_nll_acc(
     test_num, class_num, test_sample_num, induce_num,
     key,
 ):
-    inducing_sigma_mat = diag(inducing_sigma)
+    inducing_sigma_mat = diag(softplus(inducing_sigma))
 
     test_nll_list = []
     total_correct_count = 0
 
     test_batches = TestBatch(x_test, y_test, 64)
-    for batch_x, batch_y in tqdm(test_batches, leave=False):
+    for batch_x, batch_y in tqdm(test_batches, leave=False, ncols=0):
         batch_num = batch_x.shape[0]
 
         induced_test = concatenate([inducing_points, batch_x], axis=0)
         kernel = kernel_fn(induced_test, induced_test, "nngp") * kernel_scale
 
         kernel_i_i, kernel_i_t, kernel_t_i, kernel_t_t = split_kernel(kernel, induce_num)
-        kernel_i_i_inverse = inv(kernel_i_i + 1e-4 * eye(induce_num))
+        kernel_i_i_inverse = inv(kernel_i_i + 1e-6 * eye(induce_num))
 
         # L_induced = jnp.linalg.cholesky(kernel_i_i)
         # L_induced = kron_diag(L_induced, n=class_num)
@@ -96,7 +100,7 @@ def test_nll_acc(
 
         inducing_x = inducing_points
         inducing_y = transpose(L_mu.reshape(-1, induce_num))
-        predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y, diag_reg=1e-4)
+        predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y, diag_reg=1e-6)
         test_mean, test_covariance = predict_fn(x_test=batch_x, get="nngp", compute_cov=True)
         test_covariance *= kernel_scale
 
