@@ -13,6 +13,10 @@ from . import svgp
 from . import svtp
 
 
+def softplus(x):
+    return log(1 + exp(x))
+
+
 def softplus_inv(x):
     return log(exp(x) - 1.)
 
@@ -35,8 +39,8 @@ def add_subparser(subparsers):
     parser.add_argument("-in",   "--induce-num",      default=100, type=int)
     parser.add_argument("-sn",   "--sample-num",      default=100, type=int)
     parser.add_argument("-tssn", "--test-sample-num", default=10000, type=int)
-    parser.add_argument("-a",    "--alpha",           default=4., type=float)
-    parser.add_argument("-b",    "--beta",            default=4., type=float)
+    parser.add_argument("-a",    "--alpha",           default=2., type=float)
+    parser.add_argument("-b",    "--beta",            default=2., type=float)
     parser.add_argument("-lr",   "--learning_rate",   default=0.001, type=float)
     parser.add_argument("-pi",   "--print-interval",  default=100, type=int)
     parser.add_argument("-ks",   "--kernel-scale",   default=1., type=float)
@@ -88,11 +92,20 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     )
     class_num = y_train.shape[1]
 
+    w_variance = softplus_inv(w_variance + 1e-6)
+    b_variance = softplus_inv(b_variance + 1e-6)
+    last_w_variance = softplus_inv(last_w_variance + 1e-6)
+
     # Kernel
     if dataset in ["mnist", "cifar10", "cifar100"]:
-        kernel_fn = get_cnn_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
+        def get_kernel_fn(w_variance, b_variance, last_w_variance):
+            wv = sqrt(softplus(w_variance))
+            bv = sqrt(softplus(b_variance))
+            lwv = sqrt(softplus(last_w_variance))
+            return get_cnn_kernel(depth, class_num, activation, wv, bv, lwv)
     elif dataset in ["iris"]:
-        kernel_fn = get_mlp_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
+        def get_kernel_fn(w_variance, b_variance, last_w_variance):
+            return get_mlp_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
     else:
         raise ValueError("Unsupported dataset '{}'".format(dataset))
 
@@ -108,19 +121,21 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     inducing_sigma = jnp.full(induce_num * class_num, softplus_inv(1e-6))
 
     if method == "svgp":
-        train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points)
+        train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points, w_variance, b_variance, last_w_variance)
         train_consts = (train_num, class_num, sample_num, induce_num, batch_size)
         test_consts = (test_num, class_num, test_sample_num, induce_num)
         test_nll_acc = svgp.test_nll_acc
+        svgp.get_kernel_fn = get_kernel_fn
     elif method == "svtp":
         invgamma_a = softplus_inv(alpha + 1e-6)
         invgamma_b = softplus_inv(beta + 1e-6)
 
         train_vars = svtp.get_train_vars(inducing_mu, inducing_sigma, inducing_points,
-                                         invgamma_a, invgamma_b)
+                                         invgamma_a, invgamma_b, w_variance, b_variance, last_w_variance)
         train_consts = (alpha, beta, train_num, class_num, sample_num, induce_num, batch_size)
         test_consts = (test_num, class_num, test_sample_num, induce_num)
         test_nll_acc = svtp.test_nll_acc
+        svtp.get_kernel_fn = get_kernel_fn
     else:
         raise ValueError("Unsupported method '{}'".format(method))
 
@@ -142,7 +157,7 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
         train_params = get_params(opt_state)
 
         grads = grad_elbo_jit(x_batch, y_batch,
-                                kernel_fn, kernel_scale,
+                                get_kernel_fn, kernel_scale,
                                 *train_params,
                                 *train_consts, split_key)
 
@@ -151,19 +166,26 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
         if i % print_interval == 0:
             train_params = get_params(opt_state)
             n_elbo = negative_elbo_jit(x_batch, y_batch,
-                                        kernel_fn, kernel_scale,
+                                        get_kernel_fn, kernel_scale,
                                         *train_params,
                                         *train_consts, split_key)
 
+
+            wv = softplus(train_params[-3])
+            bv = softplus(train_params[-2])
+            lwv = softplus(train_params[-1])
+            # tqdm.write(f"wv: {wv:.6f},  bv: {bv:.6f},  lv: {lwv:.6f}")
+
             elbo_print = "{} / {}: nELBO = {:.6f}".format(i, len(train_batches), n_elbo)
-            tqdm.write(elbo_print)
+            # tqdm.write(elbo_print)
+            tqdm.write(elbo_print + f"     wv: {wv:.6f},  bv: {bv:.6f},  lv: {lwv:.6f}")
 
             if log_dir is not None:
                 log_file.write(elbo_print + "\n")
                 log_file.flush()
 
         if i % test_interval == 0 or i == steps - 1:
-            test_nll, test_acc = test_nll_acc(x_test, y_test, kernel_fn, kernel_scale,
+            test_nll, test_acc = test_nll_acc(x_test, y_test, get_kernel_fn, kernel_scale,
                                               *train_params, *test_consts, key)
 
             nll_acc_print = "{} / {}: test_nll = {:.6f}, test_acc = {:.4f}".format(i, len(train_batches), test_nll, test_acc)

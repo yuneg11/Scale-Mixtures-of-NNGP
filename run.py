@@ -28,7 +28,11 @@ def main(raw_args):
     experiments.add_subparser(subparsers, increase_depth=False)
 
     args = parser.parse_args(raw_args)
-    args.func(**vars(args))
+
+    try:
+        args.func(**vars(args))
+    except KeyboardInterrupt:
+        print("Stopped.")
 
 
 if __name__ == "__main__":
