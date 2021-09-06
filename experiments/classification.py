@@ -1,6 +1,7 @@
 from jax import random
 from jax import numpy as jnp
 from jax.experimental import optimizers
+import math
 
 from tqdm import tqdm
 
@@ -11,6 +12,8 @@ from .classification_utils import *
 
 from . import svgp
 from . import svtp
+
+import pdb
 
 
 def softplus(x):
@@ -33,8 +36,8 @@ def add_subparser(subparsers):
     parser.add_argument("method",                     choices=["svgp", "svtp"])
     parser.add_argument("-d",    "--dataset",         choices=data.classification_datasets)
     parser.add_argument("-log",  "--log-dir",         required=False)
-    parser.add_argument("-trn",  "--train-num",       default=5000, type=int)
-    parser.add_argument("-tsn",  "--test-num",        default=1000, type=int)
+    parser.add_argument("-trn",  "--train-num",       default=50000, type=int)
+    parser.add_argument("-tsn",  "--test-num",        default=10000, type=int)
     parser.add_argument("-bs",   "--batch-size",      default=128, type=int)
     parser.add_argument("-in",   "--induce-num",      default=100, type=int)
     parser.add_argument("-sn",   "--sample-num",      default=100, type=int)
@@ -43,15 +46,15 @@ def add_subparser(subparsers):
     parser.add_argument("-b",    "--beta",            default=2., type=float)
     parser.add_argument("-lr",   "--learning_rate",   default=0.001, type=float)
     parser.add_argument("-pi",   "--print-interval",  default=100, type=int)
-    parser.add_argument("-ks",   "--kernel-scale",   default=1., type=float)
+    parser.add_argument("-ks",   "--kernel-scale",    default=1., type=float)
     parser.add_argument("-act",  "--activation",      default="relu", choices=["erf", "relu"])
     parser.add_argument("-wv",   "--w-variance",      default=1., type=float)
-    parser.add_argument("-bv",   "--b-variance",      default=0., type=float)
-    parser.add_argument("-lwv",  "--last-w-variance", default=1., type=float)
+    parser.add_argument("-bv",   "--b-variance",      default=1e-8, type=float)
+    parser.add_argument("-lv",   "--last-w-variance", default=1., type=float)
     parser.add_argument("-ti",   "--test-interval",   default=500, type=int)
     parser.add_argument("-dp",   "--depth",           default=4, type=int)
     parser.add_argument("-opt",  "--optimizer",       default="adam",  choices=["adam", "sgd"])
-    parser.add_argument("-e",    "--steps",           default=20000, type=int)
+    parser.add_argument("-e",    "--steps",           default=30000, type=int)
     parser.add_argument("-s",    "--seed",            default=10, type=int)
     parser.add_argument("-nn",   "--no-normalize",    default=False, action="store_true")
     parser.add_argument("-km",   "--kmeans",        default=False, action="store_true")
@@ -92,20 +95,24 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     )
     class_num = y_train.shape[1]
 
-    w_variance = softplus_inv(w_variance + 1e-6)
-    b_variance = softplus_inv(b_variance + 1e-6)
-    last_w_variance = softplus_inv(last_w_variance + 1e-6)
+    w_sigma = softplus_inv(math.sqrt(w_variance) + 1e-8)
+    b_sigma = softplus_inv(math.sqrt(b_variance) + 1e-8)
+    last_w_sigma = softplus_inv(math.sqrt(last_w_variance) + 1e-8)
 
     # Kernel
-    if dataset in ["mnist", "cifar10", "cifar100"]:
-        def get_kernel_fn(w_variance, b_variance, last_w_variance):
-            wv = sqrt(softplus(w_variance))
-            bv = sqrt(softplus(b_variance))
-            lwv = sqrt(softplus(last_w_variance))
-            return get_cnn_kernel(depth, class_num, activation, wv, bv, lwv)
+    if "mnist" in dataset or "cifar" in dataset or "svhn" in dataset:
+        def get_kernel_fn(w_sigma, b_sigma, last_w_sigma):
+            ws = softplus(w_sigma)
+            bs = softplus(b_sigma)
+            ls = softplus(last_w_sigma)
+            # return get_cnn_kernel(depth, class_num, activation, ws, bs, ls)
+            return get_cnn_kernel(depth, class_num, activation, ws, bs, ls)
     elif dataset in ["iris"]:
-        def get_kernel_fn(w_variance, b_variance, last_w_variance):
-            return get_mlp_kernel(depth, class_num, activation, sqrt(w_variance), sqrt(b_variance), sqrt(last_w_variance))
+        def get_kernel_fn(w_sigma, b_sigma, last_w_sigma):
+            ws = softplus(w_sigma)
+            bs = softplus(b_sigma)
+            ls = softplus(last_w_sigma)
+            return get_mlp_kernel(depth, class_num, activation, ws, bs, ls)
     else:
         raise ValueError("Unsupported dataset '{}'".format(dataset))
 
@@ -121,7 +128,7 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
     inducing_sigma = jnp.full(induce_num * class_num, softplus_inv(1e-6))
 
     if method == "svgp":
-        train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points, w_variance, b_variance, last_w_variance)
+        train_vars = svgp.get_train_vars(inducing_mu, inducing_sigma, inducing_points, w_sigma, b_sigma, last_w_sigma)
         train_consts = (train_num, class_num, sample_num, induce_num, batch_size)
         test_consts = (test_num, class_num, test_sample_num, induce_num)
         test_nll_acc = svgp.test_nll_acc
@@ -131,7 +138,7 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
         invgamma_b = softplus_inv(beta + 1e-6)
 
         train_vars = svtp.get_train_vars(inducing_mu, inducing_sigma, inducing_points,
-                                         invgamma_a, invgamma_b, w_variance, b_variance, last_w_variance)
+                                         invgamma_a, invgamma_b, w_sigma, b_sigma, last_w_sigma)
         train_consts = (alpha, beta, train_num, class_num, sample_num, induce_num, batch_size)
         test_consts = (test_num, class_num, test_sample_num, induce_num)
         test_nll_acc = svtp.test_nll_acc
@@ -156,37 +163,39 @@ def main(method, dataset, train_num, test_num, induce_num, no_normalize, seed, d
         key, split_key = random.split(key)
         train_params = get_params(opt_state)
 
-        grads = grad_elbo_jit(x_batch, y_batch,
-                                get_kernel_fn, kernel_scale,
-                                *train_params,
-                                *train_consts, split_key)
+        grads = grad_elbo_jit(x_batch, y_batch, get_kernel_fn, kernel_scale, *train_params, *train_consts, split_key)
+
+        if any([jnp.isnan(t).any() for i, t in enumerate(grads) if i != len(grads) - 2]):
+            nelbo = negative_elbo_jit(x_batch, y_batch, get_kernel_fn, kernel_scale, *train_params, *train_consts, split_key)
+            print(f"\nNaN occurred in gradients, nelbo: {nelbo}")
+            print([jnp.isnan(t).any().item() for t in grads])
+            pdb.set_trace()
 
         opt_state = opt_update(i, grads, opt_state)
 
         if i % print_interval == 0:
             train_params = get_params(opt_state)
-            n_elbo = negative_elbo_jit(x_batch, y_batch,
-                                        get_kernel_fn, kernel_scale,
-                                        *train_params,
-                                        *train_consts, split_key)
+            n_elbo = negative_elbo_jit(x_batch, y_batch, get_kernel_fn, kernel_scale, *train_params, *train_consts, split_key)
 
-
-            wv = softplus(train_params[-3])
-            bv = softplus(train_params[-2])
-            lwv = softplus(train_params[-1])
-            # tqdm.write(f"wv: {wv:.6f},  bv: {bv:.6f},  lv: {lwv:.6f}")
+            ws = softplus(train_params[-3])
+            bs = softplus(train_params[-2])
+            ls = softplus(train_params[-1])
 
             elbo_print = "{} / {}: nELBO = {:.6f}".format(i, len(train_batches), n_elbo)
             # tqdm.write(elbo_print)
-            tqdm.write(elbo_print + f"     wv: {wv:.6f},  bv: {bv:.6f},  lv: {lwv:.6f}")
+            if method == "svtp":
+                ia = softplus(train_params[3])
+                ib = softplus(train_params[4])
+                tqdm.write(elbo_print + f"  ws: {ws:.4f}, bs: {bs:.4E}, ls: {ls:.4f}, a: {ia:.4f}, b: {ib:.4f}")
+            else:
+                tqdm.write(elbo_print + f"  ws: {ws:.4f}, bs: {bs:.4E}, ls: {ls:.4f}")
 
             if log_dir is not None:
                 log_file.write(elbo_print + "\n")
                 log_file.flush()
 
         if i % test_interval == 0 or i == steps - 1:
-            test_nll, test_acc = test_nll_acc(x_test, y_test, get_kernel_fn, kernel_scale,
-                                              *train_params, *test_consts, key)
+            test_nll, test_acc = test_nll_acc(x_test, y_test, get_kernel_fn, kernel_scale, *train_params, *test_consts, key)
 
             nll_acc_print = "{} / {}: test_nll = {:.6f}, test_acc = {:.4f}".format(i, len(train_batches), test_nll, test_acc)
             tqdm.write(nll_acc_print)

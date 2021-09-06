@@ -7,6 +7,7 @@ from .ops import *
 from .utils import *
 
 __all__ = [
+    "get_resnet_kernel",
     "get_cnn_kernel",
     "get_mlp_kernel",
     "log_likelihood",
@@ -14,6 +15,49 @@ __all__ = [
     "get_correct_count",
     "mean_covariance",
 ]
+
+
+def get_resnet_kernel(
+    depth,
+    class_num,
+    act="relu",
+    W_std=1.,
+    b_std=0.,
+    last_W_std=1.,
+):
+    def WideResnetBlock(channels, strides=(1, 1), channel_mismatch=False):
+        Main = stax.serial(
+            stax.Relu(), stax.Conv(channels, (3, 3), strides, padding='SAME', W_std=W_std, b_std=b_std),
+            stax.Relu(), stax.Conv(channels, (3, 3), padding='SAME', W_std=W_std, b_std=b_std))
+        Shortcut = stax.Identity() if not channel_mismatch else stax.Conv(
+            channels, (3, 3), strides, padding='SAME', W_std=W_std, b_std=b_std)
+        # return stax.serial(stax.FanOut(2),
+        #                     # stax.parallel(Main, Shortcut),
+        #                     stax.parallel(Main),
+        #                     stax.FanInSum())
+        return Main
+
+    def WideResnetGroup(n, channels, strides=(1, 1)):
+        blocks = []
+        blocks += [WideResnetBlock(channels, strides, channel_mismatch=True)]
+        for _ in range(n - 1):
+            blocks += [WideResnetBlock(channels, (1, 1))]
+        return stax.serial(*blocks)
+
+    def WideResnet(block_size, k, num_classes):
+        return stax.serial(
+            stax.Conv(16, (3, 3), padding='SAME', W_std=W_std, b_std=b_std),
+            WideResnetGroup(block_size, int(k)),
+            WideResnetGroup(block_size, int(k), (2, 2)),
+            WideResnetGroup(block_size, int(k), (2, 2)),
+            stax.AvgPool((8, 8)),
+            stax.Flatten(),
+            stax.Dense(num_classes, W_std=last_W_std))
+
+    init_fn, apply_fn, kernel_fn = WideResnet(block_size=depth, k=1, num_classes=class_num)
+    kernel_fn = jit(kernel_fn, static_argnums=(2,))
+
+    return kernel_fn
 
 
 def get_cnn_kernel(
@@ -97,7 +141,7 @@ def get_correct_count(label, sampled_f):
 def mean_covariance(
     x_batch, inducing_points, kernel_fn,
     inducing_mu, inducing_sigma_mat,
-    batch_num, induce_num, class_num, kernel_scale
+    batch_num, induce_num, class_num,
 ):
     batch_induced = concatenate([x_batch, inducing_points], axis=0)
 
@@ -106,9 +150,7 @@ def mean_covariance(
     predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y)#, diag_reg=1e-6)
     _, B_B = predict_fn(x_test=x_batch, get="nngp", compute_cov=True)
 
-    B_B *= kernel_scale
-
-    kernel = kernel_fn(batch_induced, batch_induced, "nngp") * kernel_scale
+    kernel = kernel_fn(batch_induced, batch_induced, "nngp")
     k_b_b, k_b_i, k_i_b, k_i_i = split_kernel(kernel, batch_num)
     k_i_i_inverse = inv(k_i_i + 1e-6 * eye(induce_num))
 

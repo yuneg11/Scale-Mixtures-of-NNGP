@@ -1,4 +1,5 @@
 import os
+import bdb
 import argparse
 import warnings
 
@@ -31,7 +32,7 @@ def main(raw_args):
 
     try:
         args.func(**vars(args))
-    except KeyboardInterrupt:
+    except KeyboardInterrupt or bdb.BdbQuit:
         print("Stopped.")
 
 

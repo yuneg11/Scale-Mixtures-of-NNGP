@@ -28,10 +28,10 @@ def sample_f_b(sample_num, batch_num, class_num, key):
 
 def kl_divergence(
     inducing_mu, inducing_sigma_mat,
-    class_num, induce_num, inducing_points, kernel_fn, kernel_scale
+    class_num, induce_num, inducing_points, kernel_fn,
 ):
 
-    k_i_i = kernel_fn(inducing_points, inducing_points, "nngp") * kernel_scale
+    k_i_i = kernel_fn(inducing_points, inducing_points, "nngp")
     k_i_i_inverse = inv(k_i_i + 1e-6 * eye(induce_num))
     k_i_i_inverse = kron_diag(k_i_i_inverse, n=class_num)
 
@@ -48,25 +48,25 @@ def kl_divergence(
 
 def negative_elbo(
     x_batch, y_batch,
-    _, kernel_scale,
+    _, __,
     inducing_mu, inducing_sigma, inducing_points,
-    w_variance, b_variance, last_w_variance,
+    w_sigma, b_sigma, last_w_sigma,
     train_num, class_num, sample_num, induce_num, batch_num,
     key,
 ):
     inducing_sigma_mat = diag(softplus(inducing_sigma))
-    kernel_fn = get_kernel_fn(w_variance, b_variance, last_w_variance)
+    kernel_fn = get_kernel_fn(w_sigma, b_sigma, last_w_sigma)
 
     mean, covariance_L = mean_covariance(x_batch, inducing_points, kernel_fn,
                                          inducing_mu, inducing_sigma_mat,
-                                         batch_num, induce_num, class_num, kernel_scale)
+                                         batch_num, induce_num, class_num)
 
     sampled_f = sample_f_b(sample_num, batch_num, class_num, key)
     sampled_f = (mean.reshape(-1, 1) + matmul(covariance_L, sampled_f.T)).T
     sampled_f = transpose(sampled_f.reshape(sample_num, class_num, batch_num), axes=(0, 2, 1))
 
     ll = log_likelihood(y_batch, sampled_f, train_num)
-    kl = kl_divergence(inducing_mu, inducing_sigma_mat, class_num, induce_num, inducing_points, kernel_fn, kernel_scale)
+    kl = kl_divergence(inducing_mu, inducing_sigma_mat, class_num, induce_num, inducing_points, kernel_fn)
 
     n_elbo = (- ll + kl) / train_num
     return n_elbo
@@ -74,14 +74,14 @@ def negative_elbo(
 
 def test_nll_acc(
     x_test, y_test,
-    _, kernel_scale,
+    _, __,
     inducing_mu, inducing_sigma, inducing_points,
-    w_variance, b_variance, last_w_variance,
+    w_sigma, b_sigma, last_w_sigma,
     test_num, class_num, test_sample_num, induce_num,
     key,
 ):
     inducing_sigma_mat = diag(softplus(inducing_sigma))
-    kernel_fn = get_kernel_fn(w_variance, b_variance, last_w_variance)
+    kernel_fn = get_kernel_fn(w_sigma, b_sigma, last_w_sigma)
 
     test_nll_list = []
     total_correct_count = 0
@@ -91,7 +91,7 @@ def test_nll_acc(
         batch_num = batch_x.shape[0]
 
         induced_test = concatenate([inducing_points, batch_x], axis=0)
-        kernel = kernel_fn(induced_test, induced_test, "nngp") * kernel_scale
+        kernel = kernel_fn(induced_test, induced_test, "nngp")
 
         kernel_i_i, kernel_i_t, kernel_t_i, kernel_t_t = split_kernel(kernel, induce_num)
         kernel_i_i_inverse = inv(kernel_i_i + 1e-6 * eye(induce_num))
@@ -109,7 +109,6 @@ def test_nll_acc(
         inducing_y = transpose(L_mu.reshape(-1, induce_num))
         predict_fn = gradient_descent_mse_ensemble(kernel_fn, inducing_x, inducing_y, diag_reg=1e-6)
         test_mean, test_covariance = predict_fn(x_test=batch_x, get="nngp", compute_cov=True)
-        test_covariance *= kernel_scale
 
         test_mean = test_mean.T.flatten()
         test_covariance = kron_diag(test_covariance, n=class_num)
@@ -139,11 +138,13 @@ def test_nll_acc(
     return nll, acc
 
 
-def get_train_vars(inducing_mu, inducing_sigma, inducing_points, w_variance, b_variance, last_w_variance):
-    train_params = (inducing_mu, inducing_sigma, inducing_points, w_variance, b_variance, last_w_variance)
+def get_train_vars(inducing_mu, inducing_sigma, inducing_points, w_sigma, b_sigma, last_w_sigma):
+    train_params = (inducing_mu, inducing_sigma, inducing_points, w_sigma, b_sigma, last_w_sigma)
 
-    negative_elbo_jit = jit(negative_elbo, static_argnums=(2, 3, 7+3, 8+3, 9+3, 10+3, 11+3))
-    grad_elbo = grad(negative_elbo_jit, argnums=(4, 5, 6, 7, 8, 9))
+    # negative_elbo_jit = jit(negative_elbo, static_argnums=(2, 3, 7+3, 8+3, 9+3, 10+3, 11+3))
+    grad_elbo = grad(negative_elbo, argnums=(4, 5, 6, 7, 8, 9))
     grad_elbo_jit = jit(grad_elbo, static_argnums=(2, 3, 7+3, 8+3, 9+3, 10+3, 11+3))
 
-    return train_params, negative_elbo_jit, grad_elbo_jit
+    # grad_elbo_jit = grad_elbo
+
+    return train_params, negative_elbo, grad_elbo_jit
