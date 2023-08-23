@@ -11,7 +11,7 @@ Hyungi Lee, [EungGu Yun](https://github.com/yuneg11), Hongseok Yang, Juho Lee
 ```
 @inproceedings{lee2022scale,
     title     = {Scale mixtures of neural network Gaussian processes},
-    author    = {Lee, Hyungi and Yun, Eunggu and Yang, Hongseok and Lee, Juho},
+    author    = {Lee, Hyungi and Yun, EungGu and Yang, Hongseok and Lee, Juho},
     booktitle = {Proceedings of the 10th International Conference on Learning Representations (ICLR 2022)},
     year      = {2022},
 }
